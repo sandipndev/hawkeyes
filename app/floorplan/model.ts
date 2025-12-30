@@ -1,6 +1,5 @@
-// Core position and dimension types
-export type Vec2 = { x: number; y: number };
-export type Vec3 = { x: number; y: number; z: number };
+import { type Vec2, type Vec3 } from "./types";
+import { type CCTV, type TowerCCTV } from "./sensors";
 
 // Furniture
 export enum Furniture {
@@ -24,6 +23,9 @@ export type Room = {
   dimensions: Vec2;
   position: Vec2;
   furniture: FurnitureItem[];
+  sensors?: {
+    cctvs?: CCTV[];
+  };
   color?: string; // Optional room-specific color
 };
 
@@ -58,5 +60,6 @@ export type Neighborhood = {
   name: string;
   buildings: Building[];
   roads: Road[];
+  towerCctvs?: TowerCCTV[];
 };
 

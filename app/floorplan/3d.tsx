@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 // @ts-ignore
 import * as THREE from "three";
-import { Furniture, type Vec2, type Vec3, type FurnitureItem, type Room, type Floor, type Building, type Neighborhood, type Road } from "./model";
+import { Furniture, type FurnitureItem, type Room, type Floor, type Building, type Neighborhood, type Road } from "./model";
+import { type Vec2, type Vec3 } from "./types";
+import { type CCTV, type TowerCCTV } from "./sensors";
+import { useSceneSettings } from "./context";
 
 // --- 3D Types ---
 
@@ -15,7 +18,26 @@ export type Room3D = {
   name: string;
   walls: WallSegment[];
   furniture: FurnitureProps[];
+  sensors: {
+    cctvs: CCTV3D[];
+  };
+  bounds: {
+    min: Vec3;
+    max: Vec3;
+  };
   color?: string;
+};
+
+export type CCTV3D = {
+  id: string;
+  fov: number;
+  position: Vec3;
+  yaw: number; // radians
+  pitch: number; // radians
+  roomBounds?: {
+    min: Vec3;
+    max: Vec3;
+  };
 };
 
 export type FurnitureProps = {
@@ -51,6 +73,16 @@ export type Neighborhood3D = {
   name: string;
   buildings: Building3D[];
   roads: Road3D[];
+  towerCctvs: TowerCCTV3D[];
+};
+
+export type TowerCCTV3D = {
+  id: string;
+  fov: number;
+  position: Vec3;
+  yaw: number; // radians
+  pitch: number; // radians
+  towerHeight: number;
 };
 
 // --- Helpers ---
@@ -98,29 +130,54 @@ const createWalls = (room: Room, currentY: number, floorHeight: number): WallSeg
   return walls;
 };
 
-const roomTo3D = (room: Room, currentY: number, floorHeight: number): Room3D => ({
-  id: room.id,
-  name: room.name,
-  walls: createWalls(room, currentY, floorHeight),
-  furniture: room.furniture.map(f => furnitureTo3D(f, currentY)),
-  color: room.color,
-});
+const roomTo3D = (room: Room, currentY: number, floorHeight: number, buildingPosition: Vec3): Room3D => {
+  const worldMin = { 
+    x: room.position.x + buildingPosition.x, 
+    y: currentY + buildingPosition.y, 
+    z: room.position.y + buildingPosition.z 
+  };
+  const worldMax = { 
+    x: worldMin.x + room.dimensions.x, 
+    y: worldMin.y + floorHeight, 
+    z: worldMin.z + room.dimensions.y 
+  };
 
-export const floorTo3D = (floor: Floor, currentY: number): Floor3D => {
+  return {
+    id: room.id,
+    name: room.name,
+    walls: createWalls(room, currentY, floorHeight),
+    furniture: room.furniture.map(f => furnitureTo3D(f, currentY)),
+    sensors: {
+      cctvs: (room.sensors?.cctvs || []).map(c => ({
+        id: c.id,
+        fov: c.fov,
+        position: { x: c.position.x, y: currentY + c.height, z: c.position.y },
+        yaw: (c.yaw || 0) * Math.PI / 180,
+        pitch: (c.pitch || 0) * Math.PI / 180,
+        roomBounds: { min: worldMin, max: worldMax },
+      })),
+    },
+    bounds: { min: worldMin, max: worldMax },
+    color: room.color,
+  };
+};
+
+export const floorTo3D = (floor: Floor, currentY: number, buildingPosition: Vec3): Floor3D => {
   return {
     id: floor.id,
     position: { x: 0, y: currentY, z: 0 },
     dimensions: { x: floor.dimensions.x, y: FLOOR_THICKNESS, z: floor.dimensions.y },
-    rooms: floor.rooms.map(r => roomTo3D(r, currentY, floor.height)),
+    rooms: floor.rooms.map(r => roomTo3D(r, currentY, floor.height, buildingPosition)),
   };
 };
 
 export const buildingTo3D = (building: Building): Building3D => {
   let currentY = 0;
   const floors3D: Floor3D[] = [];
+  const buildingPosition = { x: building.position.x, y: 0, z: building.position.y };
   
   for (const floor of building.floors) {
-    floors3D.push(floorTo3D(floor, currentY));
+    floors3D.push(floorTo3D(floor, currentY, buildingPosition));
     currentY += floor.height;
   }
 
@@ -157,6 +214,14 @@ export const neighborhoodTo3D = (neighborhood: Neighborhood): Neighborhood3D => 
   name: neighborhood.name,
   buildings: neighborhood.buildings.map(buildingTo3D),
   roads: neighborhood.roads.map(roadTo3D),
+  towerCctvs: (neighborhood.towerCctvs || []).map(t => ({
+    id: t.id,
+    fov: t.fov,
+    position: { x: t.position.x, y: t.towerHeight + t.height, z: t.position.y },
+    yaw: (t.yaw || 0) * Math.PI / 180,
+    pitch: (t.pitch || 0) * Math.PI / 180,
+    towerHeight: t.towerHeight,
+  })),
 });
 
 // --- React Rendering Components ---
@@ -167,7 +232,7 @@ export function Surface({
   color = "#e0f2fe", 
   opacity = 0.3,
   showLines = true,
-  depthWrite = false
+  depthWrite = true
 }: { 
   position: Vec3; 
   dimensions: Vec3; 
@@ -195,7 +260,7 @@ export function Surface({
           depthWrite={depthWrite} 
         />
       </mesh>
-      {showLines && <Line geometry={edges} color="#3b82f6" opacity={0.4} />}
+      {showLines && <Line geometry={edges} color="#3b82f6" opacity={0.8} thickness={0.01} />}
     </group>
   );
 }
@@ -205,18 +270,63 @@ export function Line({
   position = { x: 0, y: 0, z: 0 }, 
   color = "#3b82f6", 
   opacity = 1, 
-  linewidth = 5 
+  thickness = 0.02 
 }: { 
   geometry: THREE.BufferGeometry; 
   position?: Vec3; 
   color?: string; 
   opacity?: number; 
-  linewidth?: number 
+  thickness?: number 
 }) {
+  const segments = useMemo(() => {
+    const posAttr = geometry.getAttribute("position");
+    if (!posAttr) return [];
+    const pts = [];
+    for (let i = 0; i < posAttr.count; i += 2) {
+      const start = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+      const end = new THREE.Vector3().fromBufferAttribute(posAttr, i + 1);
+      
+      const direction = new THREE.Vector3().subVectors(end, start);
+      const length = direction.length();
+      if (length < 0.001) continue;
+
+      const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+      
+      const orientation = new THREE.Matrix4();
+      const up = new THREE.Vector3(0, 1, 0);
+      const target = direction.clone().normalize();
+      
+      if (Math.abs(up.dot(target)) > 0.999) {
+        orientation.lookAt(start, end, new THREE.Vector3(1, 0, 0));
+      } else {
+        orientation.lookAt(start, end, up);
+      }
+      orientation.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+      
+      pts.push({ 
+        position: [center.x, center.y, center.z] as [number, number, number], 
+        rotation: new THREE.Euler().setFromRotationMatrix(orientation), 
+        length 
+      });
+    }
+    return pts;
+  }, [geometry]);
+
   return (
-    <lineSegments position={toVec3Array(position)} geometry={geometry}>
-      <lineBasicMaterial color={color} opacity={opacity} transparent={opacity < 1} linewidth={linewidth} />
-    </lineSegments>
+    <group position={toVec3Array(position)}>
+      {segments.map((seg, i) => (
+        <mesh key={i} position={seg.position} rotation={seg.rotation}>
+          <cylinderGeometry args={[thickness, thickness, seg.length, 8]} />
+          <meshStandardMaterial 
+            color={color} 
+            transparent={opacity < 1} 
+            opacity={opacity} 
+            roughness={0.3}
+            metalness={0.2}
+          />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -278,6 +388,149 @@ export function FurnitureItemComponent({ item }: { item: FurnitureProps }) {
   }
 }
 
+export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHeight?: number }) {
+  const { showCctvFrustums } = useSceneSettings();
+  const fovRad = (cctv.fov * Math.PI) / 180;
+  const coneRadius = Math.tan(fovRad / 2) * coneHeight;
+
+  const clippingPlanes = useMemo(() => {
+    const planes = [
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), 0) // Always clip at ground level
+    ];
+    
+    if (cctv.roomBounds) {
+      const { min, max } = cctv.roomBounds;
+      planes.push(
+        new THREE.Plane(new THREE.Vector3(1, 0, 0), -min.x),
+        new THREE.Plane(new THREE.Vector3(-1, 0, 0), max.x),
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -min.y),
+        new THREE.Plane(new THREE.Vector3(0, -1, 0), max.y),
+        new THREE.Plane(new THREE.Vector3(0, 0, 1), -min.z),
+        new THREE.Plane(new THREE.Vector3(0, 0, -1), max.z),
+      );
+    }
+    return planes;
+  }, [cctv.roomBounds]);
+
+  return (
+    <group position={toVec3Array(cctv.position)} renderOrder={10}>
+      <group rotation={[cctv.pitch, cctv.yaw, 0]}>
+        {/* Camera Housing */}
+        <mesh>
+          <boxGeometry args={[0.15, 0.15, 0.3]} />
+          <meshStandardMaterial color="#1e293b" />
+        </mesh>
+        {/* Camera Lens/Front */}
+        <mesh position={[0, 0, 0.15]}>
+          <sphereGeometry args={[0.06, 16, 16]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+        {/* Red Status Light */}
+        <mesh position={[0.04, 0.04, 0.16]}>
+          <sphereGeometry args={[0.01, 8, 8]} />
+          <meshBasicMaterial color="#ef4444" />
+        </mesh>
+
+        {/* Field of View Visualization (Frustum) */}
+        {showCctvFrustums && (
+          <group position={[0, 0, 0.15]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, coneHeight / 2]}>
+              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
+              <meshBasicMaterial 
+                color="#ef4444" 
+                transparent 
+                opacity={0.15} 
+                side={THREE.DoubleSide} 
+                depthWrite={false}
+                clippingPlanes={clippingPlanes}
+                clipShadows={true}
+                onBeforeCompile={(shader) => {
+                  shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying vec2 vFrustumUv;`
+                  );
+                  shader.vertexShader = shader.vertexShader.replace(
+                    '#include <uv_vertex>',
+                    `#include <uv_vertex>
+                    vFrustumUv = uv;`
+                  );
+                  shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying vec2 vFrustumUv;`
+                  );
+                  shader.fragmentShader = shader.fragmentShader.replace(
+                    'vec4 diffuseColor = vec4( diffuse, opacity );',
+                    'vec4 diffuseColor = vec4( diffuse, vFrustumUv.y * opacity );'
+                  );
+                }}
+              />
+            </mesh>
+
+            {/* Vision Lines (Edges of the cone) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, coneHeight / 2]}>
+              <coneGeometry args={[coneRadius, coneHeight, 4, 1, true]} />
+              <meshBasicMaterial 
+                color="#ef4444" 
+                transparent 
+                opacity={0.3} 
+                wireframe 
+                depthWrite={false}
+                clippingPlanes={clippingPlanes}
+                onBeforeCompile={(shader) => {
+                  shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying vec2 vFrustumUv;`
+                  );
+                  shader.vertexShader = shader.vertexShader.replace(
+                    '#include <uv_vertex>',
+                    `#include <uv_vertex>
+                    vFrustumUv = uv;`
+                  );
+                  shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `#include <common>
+                    varying vec2 vFrustumUv;`
+                  );
+                  shader.fragmentShader = shader.fragmentShader.replace(
+                    'vec4 diffuseColor = vec4( diffuse, opacity );',
+                    'vec4 diffuseColor = vec4( diffuse, vFrustumUv.y * opacity );'
+                  );
+                }}
+              />
+            </mesh>
+          </group>
+        )}
+      </group>
+    </group>
+  );
+}
+
+export function TowerCCTVComponent({ cctv }: { cctv: TowerCCTV3D }) {
+  const towerRadius = 0.1;
+  
+  return (
+    <group position={[cctv.position.x, 0, cctv.position.z]}>
+      {/* Tower Pole */}
+      <mesh position={[0, cctv.towerHeight / 2, 0]}>
+        <cylinderGeometry args={[towerRadius, towerRadius * 1.5, cctv.towerHeight, 16]} />
+        <meshStandardMaterial color="#475569" />
+      </mesh>
+
+      {/* Camera at the top */}
+      <CCTVComponent 
+        cctv={{
+          ...cctv,
+          position: { x: 0, y: cctv.position.y, z: 0 }
+        }} 
+        coneHeight={50} 
+      />
+    </group>
+  );
+}
+
 export function RoomComponent({ room }: { room: Room3D }) {
   return (
     <group>
@@ -293,6 +546,9 @@ export function RoomComponent({ room }: { room: Room3D }) {
       ))}
       {room.furniture.map((item, i) => (
         <FurnitureItemComponent key={`${room.id}-furniture-${i}`} item={item} />
+      ))}
+      {room.sensors.cctvs.map((cctv) => (
+        <CCTVComponent key={cctv.id} cctv={cctv} />
       ))}
     </group>
   );
@@ -315,7 +571,7 @@ export function BuildingComponent({ building3D }: { building3D: Building3D }) {
   
   return (
     <group position={toVec3Array(building3D.position)}>
-      <Line geometry={buildingEdges} position={{ x: 0, y: building3D.dimensions.y / 2, z: 0 }} color="#3b82f6" opacity={0.3} />
+      <Line geometry={buildingEdges} position={{ x: 0, y: building3D.dimensions.y / 2, z: 0 }} color="#3b82f6" opacity={0.6} thickness={0.05} />
       {building3D.floors.map((floor) => (
         <FloorComponent key={floor.id} floor={floor} />
       ))}
@@ -352,6 +608,9 @@ export function NeighborhoodComponent({ neighborhood3D }: { neighborhood3D: Neig
       ))}
       {neighborhood3D.buildings.map((building) => (
         <BuildingComponent key={building.id} building3D={building} />
+      ))}
+      {neighborhood3D.towerCctvs.map((cctv) => (
+        <TowerCCTVComponent key={cctv.id} cctv={cctv} />
       ))}
     </group>
   );

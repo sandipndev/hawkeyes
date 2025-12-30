@@ -17,6 +17,18 @@ const floor1: Floor = {
         { type: Furniture.Table, position: { x: -0.5, y: 2 } },
         { type: Furniture.Chair, position: { x: -0.5, y: 1 }, rotation: 180 },
       ],
+      sensors: {
+        cctvs: [
+          { 
+            id: "cam-1", 
+            fov: 60, 
+            position: { x: -3.8, y: -2.8 }, 
+            height: 2.8,
+            yaw: 45,
+            pitch: 30 
+          }
+        ]
+      }
     },
     {
       id: "f1-r2",
@@ -27,6 +39,18 @@ const floor1: Floor = {
         { type: Furniture.Bed, position: { x: 2, y: 0 }, rotation: 0 },
         { type: Furniture.Table, position: { x: 0.5, y: 2 } },
       ],
+      sensors: {
+        cctvs: [
+          { 
+            id: "cam-2", 
+            fov: 70, 
+            position: { x: 3.8, y: 2.8 }, 
+            height: 2.5,
+            yaw: 225, // Pointing towards top-left of this room
+            pitch: 20 
+          }
+        ]
+      }
     },
   ],
 };
@@ -69,5 +93,34 @@ export const neighborhood: Neighborhood = {
   roads: [
     { id: "road-1", name: "Main St", start: { x: -30, y: 5 }, end: { x: 30, y: 5 }, width: 4 },
     { id: "road-2", name: "Oak Ave", start: { x: 0, y: -20 }, end: { x: 0, y: 20 }, width: 4 },
+  ],
+  towerCctvs: [
+    {
+      id: "tower-cam-1",
+      fov: 90,
+      position: { x: 0, y: 0 },
+      towerHeight: 8,
+      height: 0.5,
+      yaw: 0,
+      pitch: 45,
+    },
+    {
+      id: "tower-cam-2",
+      fov: 90,
+      position: { x: 15, y: 15 },
+      towerHeight: 12,
+      height: 0.5,
+      yaw: 225,
+      pitch: 30,
+    },
+    {
+      id: "tower-cam-3",
+      fov: 120,
+      position: { x: -20, y: -15 },
+      towerHeight: 15,
+      height: 0.5,
+      yaw: 45,
+      pitch: 40,
+    }
   ],
 };
