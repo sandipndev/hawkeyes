@@ -11,6 +11,77 @@ import * as THREE from "three";
 
 const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];
 
+function DetectionEngine() {
+  const { allCctvs, people, setPeople } = useSceneSettings();
+  const { scene } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  
+  // Pre-calculate frustums for all CCTVs
+  const cctvFrustums = useMemo(() => {
+    return allCctvs.map(cctv => {
+      // Create a temporary camera to helper generate the frustum
+      const tempCam = new THREE.PerspectiveCamera(cctv.fov, 1, 0.1, 100);
+      tempCam.position.set(cctv.worldPosition.x, cctv.worldPosition.y, cctv.worldPosition.z);
+      
+      // CCTV forward is positive Z
+      const dir = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(cctv.pitch, cctv.yaw, 0, 'YXZ'));
+      tempCam.lookAt(tempCam.position.clone().add(dir));
+      tempCam.updateMatrixWorld();
+      
+      const frustum = new THREE.Frustum();
+      const projScreenMatrix = new THREE.Matrix4();
+      projScreenMatrix.multiplyMatrices(tempCam.projectionMatrix, tempCam.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreenMatrix);
+      
+      return { id: cctv.id, frustum, worldPosition: cctv.worldPosition };
+    });
+  }, [allCctvs]);
+
+  useFrame(() => {
+    if (people.length === 0) return;
+
+    setPeople(prevPeople => {
+      let hasChanges = false;
+      const nextPeople = prevPeople.map(person => {
+        // Check if person is within any CCTV frustum AND has clear line of sight
+        const isDetected = cctvFrustums.some(({ frustum, worldPosition }) => {
+          // 1. Frustum Check
+          if (!frustum.containsPoint(person.position)) return false;
+
+          // 2. Line of Sight Check (Wall/Surface Occlusion)
+          const start = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
+          // Target slightly above ground to avoid hitting floor
+          const target = person.position.clone().add(new THREE.Vector3(0, 0.5, 0));
+          const direction = target.clone().sub(start);
+          const distance = direction.length();
+          direction.normalize();
+
+          raycaster.set(start, direction);
+          const intersects = raycaster.intersectObjects(scene.children, true);
+
+          // Find the first surface hit
+          const firstSurface = intersects.find((hit: THREE.Intersection) => 
+            hit.object.userData.isSurface && 
+            hit.distance < distance - 0.2 // Buffer to avoid hitting the person itself
+          );
+
+          return !firstSurface;
+        });
+
+        if (person.isDetected !== isDetected) {
+          hasChanges = true;
+          return { ...person, isDetected };
+        }
+        return person;
+      });
+
+      return hasChanges ? nextPeople : prevPeople;
+    });
+  });
+
+  return null;
+}
+
 function Scene() {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
@@ -58,6 +129,7 @@ function Scene() {
 
   return (
     <>
+      <DetectionEngine />
       <NeighborhoodComponent neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
