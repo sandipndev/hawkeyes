@@ -659,7 +659,7 @@ export type Person3D = {
   target: THREE.Vector3;
   type: 'road' | 'room';
   isThreat: boolean;
-  isDetected: boolean;
+  isVisible: boolean;
   threatDetectedAt?: number;
   isPanicking?: boolean;
   speed: number;
@@ -668,34 +668,44 @@ export type Person3D = {
 export function PersonComponent({ person }: { person: Person3D }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+  const { isPaused } = useSceneSettings();
   
   useFrame((state) => {
+    if (isPaused) return;
+    
     if (groupRef.current) {
       // Direct position update for smoother visual movement
       groupRef.current.position.copy(person.position);
     }
     
-    if (person.isThreat && person.isDetected && meshRef.current) {
-      const scale = 1 + Math.sin(state.clock.elapsedTime * 10) * 0.2;
-      meshRef.current.scale.set(scale, scale, scale);
-    } else if (person.isPanicking && meshRef.current) {
-      const scale = 0.8 + Math.sin(state.clock.elapsedTime * 20) * 0.1;
-      meshRef.current.scale.set(scale, scale, scale);
+    if (person.isVisible) {
+      if (person.isThreat && meshRef.current) {
+        const scale = 1 + Math.sin(state.clock.elapsedTime * 10) * 0.2;
+        meshRef.current.scale.set(scale, scale, scale);
+      } else if (person.isPanicking && meshRef.current) {
+        const scale = 0.8 + Math.sin(state.clock.elapsedTime * 20) * 0.1;
+        meshRef.current.scale.set(scale, scale, scale);
+      } else if (meshRef.current) {
+        meshRef.current.scale.set(1, 1, 1);
+      }
     } else if (meshRef.current) {
       meshRef.current.scale.set(1, 1, 1);
     }
   });
 
-  const color = person.isThreat
-    ? (person.isDetected ? "#ef4444" : "#947070") // Red vs Greyish Red
-    : (person.isDetected ? "#3b82f6" : "#94a3b8"); // Blue vs Grey
+  const getPersonColor = () => {
+    if (!person.isVisible) return "#94a3b8"; // Gray when not in view
+    return person.isThreat ? "#ef4444" : "#3b82f6"; // Red for threat, Blue for normal when in view
+  };
+
+  const personColor = getPersonColor();
 
   return (
     <group ref={groupRef}>
       {/* The dot representing the person */}
       <mesh ref={meshRef} position={[0, 0.5, 0]}>
         <sphereGeometry args={[0.2, 16, 16]} />
-        <meshBasicMaterial color={color} />
+        <meshBasicMaterial color={personColor} transparent={!person.isVisible} opacity={person.isVisible ? 1 : 0.6} />
       </mesh>
       
       {/* Identifier Label */}
@@ -707,41 +717,78 @@ export function PersonComponent({ person }: { person: Person3D }) {
         sprite
       >
         <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none ${
-          person.isThreat 
-            ? (person.isDetected ? 'bg-red-500 animate-pulse' : 'bg-rose-900/40 backdrop-blur-sm border border-rose-800/50') 
-            : (person.isDetected ? 'bg-blue-500' : 'bg-slate-400')
-        }${!person.isThreat && person.isPanicking ? ' animate-bounce' : ''}`}>
-          {person.isDetected ? (person.isThreat ? 'THREAT' : 'PERSON') : (person.isThreat ? 'UNDETECTED THREAT' : 'UNDETECTED PERSON')} #{person.id}
+          !person.isVisible 
+            ? 'bg-slate-400 opacity-60' 
+            : person.isThreat 
+              ? 'bg-red-500 animate-pulse' 
+              : 'bg-blue-500'
+        }${person.isVisible && !person.isThreat && person.isPanicking ? ' animate-bounce' : ''}`}>
+          {person.isVisible ? (person.isThreat ? 'THREAT' : 'PERSON') : 'UNDETECTED'} #{person.id}
         </div>
       </Html>
 
       {/* Ring at the feet */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
         <ringGeometry args={[0.25, 0.3, 32]} />
-        <meshBasicMaterial color={color} transparent opacity={0.5} />
+        <meshBasicMaterial color={personColor} transparent opacity={person.isVisible ? 0.5 : 0.2} />
       </mesh>
     </group>
   );
 }
 
 export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhood3D }) {
-  const { people, setPeople } = useSceneSettings();
+  const { people, setPeople, addDetectionToLog, allCctvs, isPaused } = useSceneSettings();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const { scene } = useThree();
-  
+  const lastDetectionTimes = useRef<Record<string, number>>({});
+
+  // Pre-calculate frustums for all CCTVs
+  const cctvFrustums = useMemo(() => {
+    return allCctvs.map(cctv => {
+      const tempCam = new THREE.PerspectiveCamera(cctv.fov, 1, 0.1, 100);
+      tempCam.position.set(cctv.worldPosition.x, cctv.worldPosition.y, cctv.worldPosition.z);
+      const dir = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(cctv.pitch, cctv.yaw, 0, 'YXZ'));
+      tempCam.lookAt(tempCam.position.clone().add(dir));
+      tempCam.updateMatrixWorld();
+      const frustum = new THREE.Frustum();
+      const projScreenMatrix = new THREE.Matrix4();
+      projScreenMatrix.multiplyMatrices(tempCam.projectionMatrix, tempCam.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreenMatrix);
+      return { id: cctv.id, frustum, worldPosition: cctv.worldPosition };
+    });
+  }, [allCctvs]);
+
+  useEffect(() => {
+    if (isPaused) return;
+
+    people.forEach(p => {
+      // Check if the person is currently visible and this is a new detection event
+      if (p.isVisible && p.threatDetectedAt && p.threatDetectedAt !== lastDetectionTimes.current[p.id]) {
+        lastDetectionTimes.current[p.id] = p.threatDetectedAt;
+        addDetectionToLog({
+          id: `${p.id}-${p.threatDetectedAt}`,
+          personId: p.id,
+          type: p.type,
+          isThreat: p.isThreat,
+          timestamp: p.threatDetectedAt
+        });
+      }
+    });
+  }, [people, addDetectionToLog, isPaused]);
+
   // Find valid spawn/target points (room centers or road points)
   const validPoints = useMemo(() => {
-    // ... same as before
     const points: { pos: THREE.Vector3; floorY: number; roomId?: string; type: 'road' | 'room' }[] = [];
     
     neighborhood3D.buildings.forEach(b => {
-      const groundFloor = b.floors.find(f => f.position.y < 0.5);
+      // Only ground floor (level 0)
+      const groundFloor = b.floors.find(f => f.position.y < 0.5); // Assuming ground floor is at y=0
       if (groundFloor) {
         groundFloor.rooms.forEach(r => {
           points.push({
             pos: new THREE.Vector3(
               (r.bounds.min.x + r.bounds.max.x) / 2,
-              0.1,
+              0.1, // Ground floor height
               (r.bounds.min.z + r.bounds.max.z) / 2
             ),
             floorY: 0,
@@ -753,6 +800,7 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
     });
 
     neighborhood3D.roads.forEach(road => {
+      // Add multiple points along the road to ensure better spreading
       const start = new THREE.Vector3(road.position.x, 0.1, road.position.z);
       points.push({
         pos: start,
@@ -760,6 +808,7 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
         type: 'road'
       });
 
+      // Add more points along the road length for better distribution
       const steps = 3;
       const dx = Math.sin(road.rotation);
       const dz = Math.cos(road.rotation);
@@ -783,11 +832,14 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
 
   // Initialize people
   useEffect(() => {
-    if (validPoints.length === 0 || people.length > 0) return;
+    if (validPoints.length === 0) return;
 
     const initialPeople: Person3D[] = Array.from({ length: 10 }).map((_, i) => {
+      // Pick unique start points to ensure spreading
       const shuffledPoints = [...validPoints].sort(() => Math.random() - 0.5);
       const startPoint = shuffledPoints[i % shuffledPoints.length];
+      
+      // Filter targets to be of the same type (road or room) to prevent jumping in/out
       const sameTypePoints = validPoints.filter(vp => vp.type === startPoint.type);
       const targetPoint = sameTypePoints[Math.floor(Math.random() * sameTypePoints.length)];
       
@@ -797,23 +849,41 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
         target: targetPoint.pos.clone(),
         type: startPoint.type,
         isThreat: false,
-        isDetected: true, // Initially detected for legacy support, but will be updated by engine
+        isVisible: false,
         speed: 1 + Math.random() * 2
       };
     });
     setPeople(initialPeople);
-  }, [validPoints, setPeople]); // people.length check prevents infinite loop
+  }, [validPoints]);
 
   useFrame((state, delta) => {
+    if (isPaused) return;
+    
     const now = state.clock.elapsedTime;
     
     setPeople(prevPeople => {
-      if (prevPeople.length === 0) return prevPeople;
       const threats = prevPeople.filter(p => p.isThreat);
       const threatCount = threats.length;
 
       return prevPeople.map(p => {
         const newPos = p.position.clone();
+
+        // 0. Visibility Check (Logic from DetectionEngine)
+        const isVisible = cctvFrustums.some(({ frustum, worldPosition }) => {
+          if (!frustum.containsPoint(p.position)) return false;
+          const start = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
+          const target = p.position.clone().add(new THREE.Vector3(0, 0.5, 0));
+          const direction = target.clone().sub(start);
+          const distance = direction.length();
+          direction.normalize();
+          raycaster.set(start, direction);
+          const intersects = raycaster.intersectObjects(scene.children, true);
+          const firstSurface = intersects.find((hit: THREE.Intersection) => 
+            hit.object.userData.isSurface && hit.distance < distance - 0.2
+          );
+          return !firstSurface;
+        });
+
         let dir = p.target.clone().sub(p.position);
         const dist = dir.length();
 
@@ -821,17 +891,26 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
         let isThreat = p.isThreat;
         let threatDetectedAt = p.threatDetectedAt;
 
+        // Force at least one threat if none exist after 5 seconds
         if (threatCount === 0 && now > 5 && p.id === "01") {
           isThreat = true;
-          threatDetectedAt = now;
         }
 
+        // Randomly become a threat even mid-walk if under limit
         if (!isThreat && threatCount < 3 && Math.random() > 0.999) {
           isThreat = true;
+        }
+
+        // Set detection time only when FIRST visible
+        if (isVisible && !threatDetectedAt) {
           threatDetectedAt = now;
+        } else if (!isVisible) {
+          // Reset detection time when out of view, so it can be re-detected as a new event
+          threatDetectedAt = undefined;
         }
 
         if (dist < 0.4) {
+          // Reached target, pick a new one of the same type (road/room)
           const availablePoints = validPoints.filter(vp => vp.type === p.type);
           const nextTarget = availablePoints[Math.floor(Math.random() * availablePoints.length)];
           
@@ -839,21 +918,28 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
             ...p,
             target: nextTarget.pos.clone(),
             isThreat,
-            threatDetectedAt
+            threatDetectedAt,
+            isVisible
           };
         }
 
+        // 2. Movement Logic
         dir.normalize();
 
+        // 3. Avoidance Logic (Fear of threats)
         let isPanicking = false;
         if (!p.isThreat) {
           threats.forEach(t => {
             const distToThreat = p.position.distanceTo(t.position);
+            
+            // Panic reaction: Close range (within 15m), move away immediately
             if (distToThreat < 15) {
               isPanicking = true;
               const avoidDir = p.position.clone().sub(t.position).normalize();
+              // When panicking, prioritize avoidance over target
               dir.lerp(avoidDir, 0.98);
             } 
+            // Caution reaction: Mid range (within 22.5m) and threat detected for > 1.5s
             else if (t.threatDetectedAt && (now - t.threatDetectedAt > 1.5) && distToThreat < 22.5) {
               const avoidDir = p.position.clone().sub(t.position).normalize();
               const weight = Math.max(0, 1 - distToThreat / 22.5);
@@ -862,28 +948,37 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
           });
         }
 
+        // 3.5. Social Distancing (Avoid other people)
         prevPeople.forEach(other => {
           if (other.id === p.id) return;
           const distToOther = p.position.distanceTo(other.position);
           if (distToOther < 2) { 
             const avoidDir = p.position.clone().sub(other.position).normalize();
+            // Stronger push when closer
             const strength = Math.pow(1 - distToOther / 2, 2);
             dir.lerp(avoidDir, strength * 0.4);
           }
         });
 
+        // 4. Surface Collision Avoidance
+        // We use raycasting to detect walls/surfaces in front
         raycaster.set(p.position, dir);
         const intersects = raycaster.intersectObjects(scene.children, true);
+        
+        // Only avoid objects marked as surfaces (walls, furniture) but NOT the floor/ground
         const collision = intersects.find((i: THREE.Intersection) => 
-          i.distance < 0.8 && 
+          i.distance < 0.8 && // Slightly larger distance for safer avoidance
           i.object.type === 'Mesh' && 
           i.object.userData.isSurface &&
-          Math.abs(i.face?.normal.y || 0) < 0.5
+          Math.abs(i.face?.normal.y || 0) < 0.5 // Ignore horizontal surfaces like floors
         );
 
         if (collision) {
+          // Try to steer away. If we can't find a clear path, we'll stop moving.
           const axis = new THREE.Vector3(0, 1, 0);
           dir.applyAxisAngle(axis, Math.PI / 2);
+          
+          // Check again after steering
           raycaster.set(p.position, dir);
           const nextIntersects = raycaster.intersectObjects(scene.children, true);
           const nextCollision = nextIntersects.find((i: THREE.Intersection) => 
@@ -892,25 +987,39 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
             i.object.userData.isSurface &&
             Math.abs(i.face?.normal.y || 0) < 0.5
           );
-          if (nextCollision) return { ...p, isThreat, threatDetectedAt, isPanicking };
+          
+          if (nextCollision) {
+            // Still colliding after steering? Stop moving.
+            return { ...p, isThreat, threatDetectedAt, isPanicking, isVisible };
+          }
         }
 
+        // Apply movement (speed up slightly if panicking)
         const moveSpeed = isPanicking ? p.speed * 1.25 : p.speed;
         const moveStep = dir.multiplyScalar(moveSpeed * delta);
+        
+        // Neighborhood boundaries: don't let people exit a +/- 50m box
         const nextPos = p.position.clone().add(moveStep);
-        if (Math.abs(nextPos.x) > 50 || Math.abs(nextPos.z) > 50) return { ...p, isThreat, threatDetectedAt, isPanicking };
+        if (Math.abs(nextPos.x) > 50 || Math.abs(nextPos.z) > 50) {
+           return { ...p, isThreat, threatDetectedAt, isPanicking, isVisible };
+        }
 
+        // Final sanity check: don't move if we'd literally go through a wall
         raycaster.set(p.position, moveStep.clone().normalize());
         const finalCheck = raycaster.intersectObjects(scene.children, true);
-        if (finalCheck.some((i: THREE.Intersection) => i.distance < moveStep.length() + 0.2 && i.object.userData.isSurface)) return { ...p, isThreat, threatDetectedAt, isPanicking };
+        if (finalCheck.some((i: THREE.Intersection) => i.distance < moveStep.length() + 0.2 && i.object.userData.isSurface)) {
+           return { ...p, isThreat, threatDetectedAt, isPanicking, isVisible };
+        }
 
         newPos.add(moveStep);
+
         return {
           ...p,
           position: newPos,
           isThreat,
           threatDetectedAt,
-          isPanicking
+          isPanicking,
+          isVisible
         };
       });
     });

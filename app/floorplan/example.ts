@@ -106,23 +106,16 @@ export const neighborhood: Neighborhood = {
       yaw: 10,
       pitch: 45,
     },
-    // {
-    //   id: "tower-cam-2",
-    //   fov: 90,
-    //   position: { x: 15, y: 15 },
-    //   towerHeight: 12,
-    //   height: 0.5,
-    //   yaw: 225,
-    //   pitch: 30,
-    // },
-    // {
-    //   id: "tower-cam-3",
-    //   fov: 120,
-    //   position: { x: -20, y: -15 },
-    //   towerHeight: 15,
-    //   height: 0.5,
-    //   yaw: 45,
-    //   pitch: 40,
-    // }
   ],
+};
+
+export const TOWER_CAM_2 = {
+  id: "tower-cam-2",
+  name: "South Tower",
+  fov: 90,
+  position: { x: 15, y: 15 },
+  towerHeight: 12,
+  height: 0.5,
+  yaw: 225,
+  pitch: 30,
 };

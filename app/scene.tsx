@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { NeighborhoodComponent } from "./floorplan/3d";
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
 import { type Neighborhood } from "./floorplan/model";
@@ -11,86 +11,17 @@ import * as THREE from "three";
 
 const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];
 
-function DetectionEngine() {
-  const { allCctvs, people, setPeople } = useSceneSettings();
-  const { scene } = useThree();
-  const raycaster = useMemo(() => new THREE.Raycaster(), []);
-  
-  // Pre-calculate frustums for all CCTVs
-  const cctvFrustums = useMemo(() => {
-    return allCctvs.map(cctv => {
-      // Create a temporary camera to helper generate the frustum
-      const tempCam = new THREE.PerspectiveCamera(cctv.fov, 1, 0.1, 100);
-      tempCam.position.set(cctv.worldPosition.x, cctv.worldPosition.y, cctv.worldPosition.z);
-      
-      // CCTV forward is positive Z
-      const dir = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(cctv.pitch, cctv.yaw, 0, 'YXZ'));
-      tempCam.lookAt(tempCam.position.clone().add(dir));
-      tempCam.updateMatrixWorld();
-      
-      const frustum = new THREE.Frustum();
-      const projScreenMatrix = new THREE.Matrix4();
-      projScreenMatrix.multiplyMatrices(tempCam.projectionMatrix, tempCam.matrixWorldInverse);
-      frustum.setFromProjectionMatrix(projScreenMatrix);
-      
-      return { id: cctv.id, frustum, worldPosition: cctv.worldPosition };
-    });
-  }, [allCctvs]);
-
-  useFrame(() => {
-    if (people.length === 0) return;
-
-    setPeople(prevPeople => {
-      let hasChanges = false;
-      const nextPeople = prevPeople.map(person => {
-        // Check if person is within any CCTV frustum AND has clear line of sight
-        const isDetected = cctvFrustums.some(({ frustum, worldPosition }) => {
-          // 1. Frustum Check
-          if (!frustum.containsPoint(person.position)) return false;
-
-          // 2. Line of Sight Check (Wall/Surface Occlusion)
-          const start = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
-          // Target slightly above ground to avoid hitting floor
-          const target = person.position.clone().add(new THREE.Vector3(0, 0.5, 0));
-          const direction = target.clone().sub(start);
-          const distance = direction.length();
-          direction.normalize();
-
-          raycaster.set(start, direction);
-          const intersects = raycaster.intersectObjects(scene.children, true);
-
-          // Find the first surface hit
-          const firstSurface = intersects.find((hit: THREE.Intersection) => 
-            hit.object.userData.isSurface && 
-            hit.distance < distance - 0.2 // Buffer to avoid hitting the person itself
-          );
-
-          return !firstSurface;
-        });
-
-        if (person.isDetected !== isDetected) {
-          hasChanges = true;
-          return { ...person, isDetected };
-        }
-        return person;
-      });
-
-      return hasChanges ? nextPeople : prevPeople;
-    });
-  });
-
-  return null;
-}
-
 function Scene() {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
-  const { neighborhood3D, allCctvs, activeCameraId } = useSceneSettings();
+  const { neighborhood3D, allCctvs, activeCameraId, isPaused } = useSceneSettings();
   
   const activeCctv = useMemo(() => allCctvs.find(c => c.id === activeCameraId), [allCctvs, activeCameraId]);
 
   // Handle Camera Switching and Animation
   useFrame((state) => {
+    if (isPaused) return;
+
     if (activeCctv) {
       const { x, y, z } = activeCctv.worldPosition;
       state.camera.position.lerp(new THREE.Vector3(x, y, z), 0.1);
@@ -129,7 +60,6 @@ function Scene() {
 
   return (
     <>
-      <DetectionEngine />
       <NeighborhoodComponent neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
@@ -146,6 +76,22 @@ function Scene() {
 
 function SceneControls() {
   const { showCctvFrustums, setShowCctvFrustums, activeCameraId, setActiveCameraId, allCctvs } = useSceneSettings();
+  const [time, setTime] = useState<string>("");
+
+  useEffect(() => {
+    const update = () => {
+      setTime(new Date().toLocaleTimeString('en-US', { 
+        timeZone: 'UTC', 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      }));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const EyeIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -153,6 +99,10 @@ function SceneControls() {
 
   const CameraIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+  );
+
+  const ClockIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
   );
 
   return (
@@ -190,23 +140,74 @@ function SceneControls() {
             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </div>
         </div>
+
+        <div className="w-[1px] h-6 bg-slate-200" />
+
+        {/* UTC Clock */}
+        <div className="h-10 px-4 bg-slate-900 rounded-xl flex items-center gap-2.5 shadow-inner">
+          <div className="text-indigo-400">
+            {ClockIcon}
+          </div>
+          <div className="flex flex-col -space-y-1">
+            <span className="text-[10px] font-black text-white font-mono tracking-wider">{time}</span>
+            <span className="text-[7px] font-black text-indigo-400 uppercase tracking-[0.2em]">UTC</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-export default function Scene3D({ neighborhood }: { neighborhood: Neighborhood }) {
+export default function Scene3D() {
+  const { setIsPaused, isPaused } = useSceneSettings();
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsPaused(true);
+      } else {
+        // We don't automatically unpause on visibility change 
+        // because the mouse might still be outside the scene area
+      }
+    };
+
+    const handleBlur = () => setIsPaused(true);
+    // Note: We don't necessarily want to unpause on focus if the mouse is outside
+
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [setIsPaused]);
+
   return (
-    <SceneSettingsProvider neighborhood={neighborhood}>
-      <div className="relative w-full h-full select-none">
-        <SceneControls />
-        <Canvas 
-          camera={{ position: DEFAULT_CAMERA_POS, fov: 45 }}
-          gl={{ localClippingEnabled: true }}
-        >
-          <Scene />
-        </Canvas>
-      </div>
-    </SceneSettingsProvider>
+    <div 
+      className="relative w-full h-full select-none"
+      onMouseEnter={() => setIsPaused(false)}
+      onMouseLeave={() => setIsPaused(true)}
+    >
+      <SceneControls />
+      <Canvas 
+        camera={{ position: DEFAULT_CAMERA_POS, fov: 45 }}
+        gl={{ localClippingEnabled: true }}
+      >
+        <Scene />
+      </Canvas>
+      
+      {isPaused && (
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-20 flex items-center justify-center pointer-events-none transition-all duration-500">
+          <div className="px-6 py-3 rounded-2xl bg-black/60 border border-white/10 shadow-2xl flex items-center gap-4 animate-in fade-in zoom-in duration-300">
+            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none mb-1">System Paused</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Hover to Resume Feed</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
