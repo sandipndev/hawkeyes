@@ -30,8 +30,10 @@ export type Room3D = {
 
 export type CCTV3D = {
   id: string;
+  name: string;
   fov: number;
   position: Vec3;
+  worldPosition: Vec3;
   yaw: number; // radians
   pitch: number; // radians
   roomBounds?: {
@@ -78,8 +80,10 @@ export type Neighborhood3D = {
 
 export type TowerCCTV3D = {
   id: string;
+  name: string;
   fov: number;
   position: Vec3;
+  worldPosition: Vec3;
   yaw: number; // radians
   pitch: number; // radians
   towerHeight: number;
@@ -148,10 +152,16 @@ const roomTo3D = (room: Room, currentY: number, floorHeight: number, buildingPos
     walls: createWalls(room, currentY, floorHeight),
     furniture: room.furniture.map(f => furnitureTo3D(f, currentY)),
     sensors: {
-      cctvs: (room.sensors?.cctvs || []).map(c => ({
+      cctvs: (room.sensors?.cctvs || []).map((c, idx) => ({
         id: c.id,
+        name: c.name || `${room.name} CAM ${idx + 1}`,
         fov: c.fov,
         position: { x: c.position.x, y: currentY + c.height, z: c.position.y },
+        worldPosition: { 
+          x: c.position.x + buildingPosition.x, 
+          y: currentY + buildingPosition.y + c.height, 
+          z: c.position.y + buildingPosition.z 
+        },
         yaw: (c.yaw || 0) * Math.PI / 180,
         pitch: (c.pitch || 0) * Math.PI / 180,
         roomBounds: { min: worldMin, max: worldMax },
@@ -214,15 +224,33 @@ export const neighborhoodTo3D = (neighborhood: Neighborhood): Neighborhood3D => 
   name: neighborhood.name,
   buildings: neighborhood.buildings.map(buildingTo3D),
   roads: neighborhood.roads.map(roadTo3D),
-  towerCctvs: (neighborhood.towerCctvs || []).map(t => ({
-    id: t.id,
-    fov: t.fov,
-    position: { x: t.position.x, y: t.towerHeight + t.height, z: t.position.y },
-    yaw: (t.yaw || 0) * Math.PI / 180,
-    pitch: (t.pitch || 0) * Math.PI / 180,
-    towerHeight: t.towerHeight,
-  })),
+  towerCctvs: (neighborhood.towerCctvs || []).map((t, idx) => {
+    const pos = { x: t.position.x, y: t.towerHeight + t.height, z: t.position.y };
+    return {
+      id: t.id,
+      name: t.name || `Tower CAM ${idx + 1}`,
+      fov: t.fov,
+      position: pos,
+      worldPosition: pos,
+      yaw: (t.yaw || 0) * Math.PI / 180,
+      pitch: (t.pitch || 0) * Math.PI / 180,
+      towerHeight: t.towerHeight,
+    };
+  }),
 });
+
+export const getAllCctvs = (neighborhood3D: Neighborhood3D) => {
+  const cctvs: (CCTV3D | TowerCCTV3D)[] = [];
+  neighborhood3D.buildings.forEach(b => {
+    b.floors.forEach(f => {
+      f.rooms.forEach(r => {
+        cctvs.push(...(r.sensors?.cctvs || []));
+      });
+    });
+  });
+  cctvs.push(...(neighborhood3D.towerCctvs || []));
+  return cctvs;
+};
 
 // --- React Rendering Components ---
 
@@ -232,7 +260,7 @@ export function Surface({
   color = "#e0f2fe", 
   opacity = 0.3,
   showLines = true,
-  depthWrite = true
+  depthWrite = false
 }: { 
   position: Vec3; 
   dimensions: Vec3; 
@@ -389,9 +417,10 @@ export function FurnitureItemComponent({ item }: { item: FurnitureProps }) {
 }
 
 export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHeight?: number }) {
-  const { showCctvFrustums } = useSceneSettings();
+  const { showCctvFrustums, activeCameraId } = useSceneSettings();
   const fovRad = (cctv.fov * Math.PI) / 180;
   const coneRadius = Math.tan(fovRad / 2) * coneHeight;
+  const isCurrentlyActive = activeCameraId === cctv.id;
 
   const clippingPlanes = useMemo(() => {
     const planes = [
@@ -414,25 +443,29 @@ export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHe
 
   return (
     <group position={toVec3Array(cctv.position)} renderOrder={10}>
-      <group rotation={[cctv.pitch, cctv.yaw, 0]}>
-        {/* Camera Housing */}
-        <mesh>
-          <boxGeometry args={[0.15, 0.15, 0.3]} />
-          <meshStandardMaterial color="#1e293b" />
-        </mesh>
-        {/* Camera Lens/Front */}
-        <mesh position={[0, 0, 0.15]}>
-          <sphereGeometry args={[0.06, 16, 16]} />
-          <meshStandardMaterial color="#0f172a" />
-        </mesh>
-        {/* Red Status Light */}
-        <mesh position={[0.04, 0.04, 0.16]}>
-          <sphereGeometry args={[0.01, 8, 8]} />
-          <meshBasicMaterial color="#ef4444" />
-        </mesh>
+      <group rotation={[cctv.pitch, cctv.yaw, 0, 'YXZ']}>
+        {!isCurrentlyActive && (
+          <>
+            {/* Camera Housing */}
+            <mesh>
+              <boxGeometry args={[0.15, 0.15, 0.3]} />
+              <meshStandardMaterial color="#1e293b" />
+            </mesh>
+            {/* Camera Lens/Front */}
+            <mesh position={[0, 0, 0.15]}>
+              <sphereGeometry args={[0.06, 16, 16]} />
+              <meshStandardMaterial color="#0f172a" />
+            </mesh>
+            {/* Red Status Light */}
+            <mesh position={[0.04, 0.04, 0.16]}>
+              <sphereGeometry args={[0.01, 8, 8]} />
+              <meshBasicMaterial color="#ef4444" />
+            </mesh>
+          </>
+        )}
 
         {/* Field of View Visualization (Frustum) */}
-        {showCctvFrustums && (
+        {showCctvFrustums && !isCurrentlyActive && (
           <group position={[0, 0, 0.15]}>
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, coneHeight / 2]}>
               <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
@@ -510,14 +543,18 @@ export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHe
 
 export function TowerCCTVComponent({ cctv }: { cctv: TowerCCTV3D }) {
   const towerRadius = 0.1;
+  const { activeCameraId } = useSceneSettings();
+  const isCurrentlyActive = activeCameraId === cctv.id;
   
   return (
     <group position={[cctv.position.x, 0, cctv.position.z]}>
       {/* Tower Pole */}
-      <mesh position={[0, cctv.towerHeight / 2, 0]}>
-        <cylinderGeometry args={[towerRadius, towerRadius * 1.5, cctv.towerHeight, 16]} />
-        <meshStandardMaterial color="#475569" />
-      </mesh>
+      {!isCurrentlyActive && (
+        <mesh position={[0, cctv.towerHeight / 2, 0]}>
+          <cylinderGeometry args={[towerRadius, towerRadius * 1.5, cctv.towerHeight, 16]} />
+          <meshStandardMaterial color="#475569" />
+        </mesh>
+      )}
 
       {/* Camera at the top */}
       <CCTVComponent 
@@ -542,6 +579,7 @@ export function RoomComponent({ room }: { room: Room3D }) {
           color={room.color || "#e0f2fe"}
           opacity={0.15} 
           showLines={false} 
+          depthWrite={false}
         />
       ))}
       {room.furniture.map((item, i) => (
@@ -557,7 +595,7 @@ export function RoomComponent({ room }: { room: Room3D }) {
 export function FloorComponent({ floor }: { floor: Floor3D }) {
   return (
     <group>
-      <Surface position={floor.position} dimensions={floor.dimensions} depthWrite={true} />
+      <Surface position={floor.position} dimensions={floor.dimensions} depthWrite={false} />
       {floor.rooms.map((room) => (
         <RoomComponent key={room.id} room={room} />
       ))}

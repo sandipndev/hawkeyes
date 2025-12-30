@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { neighborhood as exampleNeighborhood } from "./floorplan/example";
 
 const Scene3D = dynamic(() => import("./scene"), { ssr: false });
 
@@ -61,7 +62,7 @@ export default function Home() {
         </div>
         <div className="w-full max-w-7xl flex gap-6">
           <div className="flex-1 h-[700px] rounded-2xl overflow-hidden border border-black/10 bg-white">
-            <Scene3D />
+            <Scene3D neighborhood={exampleNeighborhood} />
           </div>
           <div className="w-96 h-[700px] rounded-2xl border border-black/10 bg-gradient-to-br from-slate-50 to-white p-6 overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">

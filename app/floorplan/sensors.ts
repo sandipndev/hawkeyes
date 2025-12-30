@@ -2,6 +2,7 @@ import { type Vec2 } from "./types";
 
 export type CCTV = {
   id: string;
+  name?: string;
   fov: number; // degrees
   position: Vec2;
   height: number; // height from the floor

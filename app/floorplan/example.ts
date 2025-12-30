@@ -21,6 +21,7 @@ const floor1: Floor = {
         cctvs: [
           { 
             id: "cam-1", 
+            name: "Bed View",
             fov: 60, 
             position: { x: -3.8, y: -2.8 }, 
             height: 2.8,
@@ -97,6 +98,7 @@ export const neighborhood: Neighborhood = {
   towerCctvs: [
     {
       id: "tower-cam-1",
+      name: "North Entrance",
       fov: 90,
       position: { x: 0, y: 0 },
       towerHeight: 8,

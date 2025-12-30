@@ -1,20 +1,55 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useRef, useMemo } from "react";
-import { neighborhoodTo3D, NeighborhoodComponent } from "./floorplan/3d";
-import { neighborhood as exampleNeighborhoodData } from "./floorplan/example";
+import { useRef, useMemo, useEffect } from "react";
+import { NeighborhoodComponent } from "./floorplan/3d";
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
+import { type Neighborhood } from "./floorplan/model";
+import * as THREE from "three";
+
+const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];
 
 function Scene() {
+  const { camera } = useThree();
   const controlsRef = useRef<any>(null);
-  const neighborhood3D = useMemo(() => neighborhoodTo3D(exampleNeighborhoodData), []);
-  const { showCctvFrustums } = useSceneSettings();
+  const { neighborhood3D, allCctvs, activeCameraId } = useSceneSettings();
   
-  useFrame(() => {
-    if (controlsRef.current) {
-      controlsRef.current.autoRotateSpeed = 0.5;
+  const activeCctv = useMemo(() => allCctvs.find(c => c.id === activeCameraId), [allCctvs, activeCameraId]);
+
+  // Reset camera when switching back to default
+  useEffect(() => {
+    if (!activeCameraId && controlsRef.current) {
+      camera.position.set(...DEFAULT_CAMERA_POS);
+      controlsRef.current.target.set(0, 0, 0);
+      camera.fov = 45;
+      camera.updateProjectionMatrix();
+      controlsRef.current.update();
+    }
+  }, [activeCameraId, camera]);
+
+  useFrame((state) => {
+    if (activeCctv) {
+      state.camera.position.set(activeCctv.worldPosition.x, activeCctv.worldPosition.y, activeCctv.worldPosition.z);
+      
+      const dir = new THREE.Vector3(0, 0, 1);
+      dir.applyEuler(new THREE.Euler(activeCctv.pitch, activeCctv.yaw, 0, 'YXZ'));
+      
+      const target = new THREE.Vector3().addVectors(new THREE.Vector3(activeCctv.worldPosition.x, activeCctv.worldPosition.y, activeCctv.worldPosition.z), dir);
+      state.camera.lookAt(target);
+      state.camera.fov = activeCctv.fov;
+      state.camera.updateProjectionMatrix();
+      
+      if (controlsRef.current) {
+        controlsRef.current.enabled = false;
+      }
+    } else {
+      if (controlsRef.current) {
+        controlsRef.current.enabled = true;
+        controlsRef.current.autoRotateSpeed = 0.5;
+      }
+      state.camera.fov = 45;
+      state.camera.updateProjectionMatrix();
     }
   });
 
@@ -25,7 +60,7 @@ function Scene() {
       <NeighborhoodComponent neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
-        autoRotate
+        autoRotate={!activeCameraId}
         autoRotateSpeed={0.5}
         enableZoom={true}
         enablePan={true}
@@ -40,38 +75,63 @@ function Scene() {
 }
 
 function SceneControls() {
-  const { showCctvFrustums, setShowCctvFrustums } = useSceneSettings();
+  const { showCctvFrustums, setShowCctvFrustums, activeCameraId, setActiveCameraId, allCctvs } = useSceneSettings();
+
+  const EyeIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+  );
+
+  const CameraIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+  );
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-auto">
-      <div className="bg-white/90 backdrop-blur-sm p-4 rounded-xl border border-black/10 shadow-lg">
-        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">View Controls</h4>
-        <label className="flex items-center gap-3 cursor-pointer group">
-          <div className="relative">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={showCctvFrustums}
-              onChange={(e) => setShowCctvFrustums(e.target.checked)}
-            />
-            <div className="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"></div>
+    <div className="absolute top-6 left-6 z-10 flex flex-col items-start gap-4 pointer-events-auto">
+      <div className="bg-white/90 backdrop-blur-md p-1.5 rounded-2xl border border-black/5 shadow-xl flex items-center gap-1.5">
+        {/* Toggle Frustums */}
+        <button 
+          onClick={() => setShowCctvFrustums(!showCctvFrustums)}
+          className={`w-10 h-10 rounded-xl transition-all flex items-center justify-center group ${showCctvFrustums ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+          title={showCctvFrustums ? "Hide CCTV Frustums" : "Show CCTV Frustums"}
+        >
+          {EyeIcon}
+        </button>
+
+        <div className="w-[1px] h-6 bg-slate-200" />
+
+        {/* Camera Selector */}
+        <div className="relative flex items-center h-10 px-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
+          <div className="text-slate-400 mr-2 group-hover:text-red-500 transition-colors">
+            {CameraIcon}
           </div>
-          <span className="text-sm font-medium text-slate-700 group-hover:text-black transition-colors">
-            CCTV Frustums
-          </span>
-        </label>
+          <select 
+            value={activeCameraId || ""} 
+            onChange={(e) => setActiveCameraId(e.target.value || null)}
+            className="bg-transparent border-none p-0 pr-6 text-[11px] font-bold text-slate-600 focus:ring-0 cursor-pointer appearance-none uppercase tracking-tight"
+          >
+            <option value="">Orbit View</option>
+            {allCctvs.map(cctv => (
+              <option key={cctv.id} value={cctv.id}>
+                {cctv.name}
+              </option>
+            ))}
+          </select>
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-export default function Scene3D() {
+export default function Scene3D({ neighborhood }: { neighborhood: Neighborhood }) {
   return (
-    <SceneSettingsProvider>
+    <SceneSettingsProvider neighborhood={neighborhood}>
       <div className="relative w-full h-full">
         <SceneControls />
         <Canvas 
-          camera={{ position: [12, 6, 12], fov: 45 }}
+          camera={{ position: DEFAULT_CAMERA_POS, fov: 45 }}
           gl={{ localClippingEnabled: true }}
         >
           <Scene />
