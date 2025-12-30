@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { neighborhood as exampleNeighborhood, TOWER_CAM_2 } from "./floorplan/example";
@@ -122,9 +123,9 @@ export default function Home() {
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded" />
             <span className="font-semibold text-xl">Hawkeyes</span>
           </div>
-          <button className="px-6 py-2 bg-white text-black rounded-full font-medium hover:bg-white/90 transition-colors">
+          <Link href="/login" className="px-6 py-2 bg-white text-black rounded-full font-medium hover:bg-white/90 transition-colors">
             Get Started
-          </button>
+          </Link>
         </nav>
       </header>
 
@@ -138,6 +139,15 @@ export default function Home() {
           <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
             Hawkeyes is the foundational engine that lets AI understand and reason about real-world spaces—so humans can act faster, with confidence.
           </p>
+
+          <div className="flex justify-center gap-4 pt-4">
+            <Link href="/login" className="px-8 py-4 bg-white text-black rounded-full font-bold hover:bg-white/90 transition-all hover:scale-105">
+              Get Started Now
+            </Link>
+            <button className="px-8 py-4 bg-white/5 text-white border border-white/10 rounded-full font-bold hover:bg-white/10 transition-all">
+              View Demo
+            </button>
+          </div>
 
           <div className="grid md:grid-cols-3 gap-6 pt-8 text-left">
             <div className="p-6 rounded-xl border border-border bg-surface backdrop-blur-sm">

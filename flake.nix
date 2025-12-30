@@ -27,12 +27,19 @@
         nodejs
         pnpm
         openssl
+        prisma-engines_6
+        postgresql
         nodePackages.typescript-language-server
         nodePackages.vercel
       ];
 
       devEnvVars = rec {
         URL = "";
+        PRISMA_SCHEMA_ENGINE_BINARY = "${pkgs.prisma-engines_6}/bin/schema-engine";
+        PRISMA_QUERY_ENGINE_BINARY = "${pkgs.prisma-engines_6}/bin/query-engine";
+        PRISMA_QUERY_ENGINE_LIBRARY = "${pkgs.prisma-engines_6}/lib/libquery_engine.node";
+        PRISMA_FMT_BINARY = "${pkgs.prisma-engines_6}/bin/prisma-fmt";
+        PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING = "1";
       };
     in
       with pkgs; {

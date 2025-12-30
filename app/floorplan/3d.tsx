@@ -473,8 +473,9 @@ export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHe
           distanceFactor={15}
           transform
           sprite
+          pointerEvents="none"
         >
-          <div className="px-1.5 py-0.5 rounded bg-slate-800/80 backdrop-blur-sm text-[8px] font-bold text-slate-200 border border-slate-700 shadow-lg whitespace-nowrap select-none">
+          <div className="px-1.5 py-0.5 rounded bg-slate-800/80 backdrop-blur-sm text-[8px] font-bold text-slate-200 border border-slate-700 shadow-lg whitespace-nowrap select-none pointer-events-none">
             {cctv.name}
           </div>
         </Html>
@@ -715,8 +716,9 @@ export function PersonComponent({ person }: { person: Person3D }) {
         distanceFactor={15} 
         transform
         sprite
+        pointerEvents="none"
       >
-        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none ${
+        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none pointer-events-none ${
           !person.isVisible 
             ? 'bg-slate-400 opacity-60' 
             : person.isThreat 

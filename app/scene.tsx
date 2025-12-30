@@ -160,19 +160,16 @@ function SceneControls() {
 
 export default function Scene3D() {
   const { setIsPaused, isPaused } = useSceneSettings();
+  const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsPaused(true);
-      } else {
-        // We don't automatically unpause on visibility change 
-        // because the mouse might still be outside the scene area
       }
     };
 
     const handleBlur = () => setIsPaused(true);
-    // Note: We don't necessarily want to unpause on focus if the mouse is outside
 
     window.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleBlur);
@@ -183,11 +180,27 @@ export default function Scene3D() {
     };
   }, [setIsPaused]);
 
+  const handleMouseEnter = () => {
+    if (pauseTimeoutRef.current) {
+      clearTimeout(pauseTimeoutRef.current);
+      pauseTimeoutRef.current = null;
+    }
+    setIsPaused(false);
+  };
+
+  const handleMouseLeave = () => {
+    // Add a small delay before pausing to make it less aggressive
+    pauseTimeoutRef.current = setTimeout(() => {
+      setIsPaused(true);
+      pauseTimeoutRef.current = null;
+    }, 1500); // 1.5 second delay
+  };
+
   return (
     <div 
       className="relative w-full h-full select-none"
-      onMouseEnter={() => setIsPaused(false)}
-      onMouseLeave={() => setIsPaused(true)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <SceneControls />
       <Canvas 
