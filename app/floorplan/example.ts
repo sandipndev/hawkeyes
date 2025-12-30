@@ -100,10 +100,10 @@ export const neighborhood: Neighborhood = {
       id: "tower-cam-1",
       name: "North Entrance",
       fov: 90,
-      position: { x: 0, y: 0 },
+      position: { x: -3, y: 0 },
       towerHeight: 8,
       height: 0.5,
-      yaw: 0,
+      yaw: 10,
       pitch: 45,
     },
     {

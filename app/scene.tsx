@@ -6,6 +6,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { NeighborhoodComponent } from "./floorplan/3d";
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
 import { type Neighborhood } from "./floorplan/model";
+// @ts-ignore
 import * as THREE from "three";
 
 const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];
@@ -17,46 +18,46 @@ function Scene() {
   
   const activeCctv = useMemo(() => allCctvs.find(c => c.id === activeCameraId), [allCctvs, activeCameraId]);
 
-  // Reset camera when switching back to default
+  // Handle Camera Switching and Animation
+  useFrame((state) => {
+    if (activeCctv) {
+      const { x, y, z } = activeCctv.worldPosition;
+      state.camera.position.lerp(new THREE.Vector3(x, y, z), 0.1);
+      
+      const dir = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(activeCctv.pitch, activeCctv.yaw, 0, 'YXZ'));
+      const target = new THREE.Vector3(x, y, z).add(dir);
+      state.camera.lookAt(target);
+      
+      if ('fov' in state.camera) {
+        const pCam = state.camera as THREE.PerspectiveCamera;
+        pCam.fov = THREE.MathUtils.lerp(pCam.fov, activeCctv.fov, 0.1);
+        pCam.updateProjectionMatrix();
+      }
+      
+      if (controlsRef.current) controlsRef.current.enabled = false;
+    } else {
+      if (controlsRef.current) {
+        controlsRef.current.enabled = true;
+        if ('fov' in state.camera) {
+          const pCam = state.camera as THREE.PerspectiveCamera;
+          pCam.fov = THREE.MathUtils.lerp(pCam.fov, 45, 0.1);
+          pCam.updateProjectionMatrix();
+        }
+      }
+    }
+  });
+
+  // Reset camera when switching to Orbit View
   useEffect(() => {
     if (!activeCameraId && controlsRef.current) {
       camera.position.set(...DEFAULT_CAMERA_POS);
       controlsRef.current.target.set(0, 0, 0);
-      camera.fov = 45;
-      camera.updateProjectionMatrix();
       controlsRef.current.update();
     }
   }, [activeCameraId, camera]);
 
-  useFrame((state) => {
-    if (activeCctv) {
-      state.camera.position.set(activeCctv.worldPosition.x, activeCctv.worldPosition.y, activeCctv.worldPosition.z);
-      
-      const dir = new THREE.Vector3(0, 0, 1);
-      dir.applyEuler(new THREE.Euler(activeCctv.pitch, activeCctv.yaw, 0, 'YXZ'));
-      
-      const target = new THREE.Vector3().addVectors(new THREE.Vector3(activeCctv.worldPosition.x, activeCctv.worldPosition.y, activeCctv.worldPosition.z), dir);
-      state.camera.lookAt(target);
-      state.camera.fov = activeCctv.fov;
-      state.camera.updateProjectionMatrix();
-      
-      if (controlsRef.current) {
-        controlsRef.current.enabled = false;
-      }
-    } else {
-      if (controlsRef.current) {
-        controlsRef.current.enabled = true;
-        controlsRef.current.autoRotateSpeed = 0.5;
-      }
-      state.camera.fov = 45;
-      state.camera.updateProjectionMatrix();
-    }
-  });
-
   return (
     <>
-      <ambientLight intensity={1.0} />
-      <pointLight position={[10, 10, 10]} intensity={1.5} />
       <NeighborhoodComponent neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
@@ -64,11 +65,8 @@ function Scene() {
         autoRotateSpeed={0.5}
         enableZoom={true}
         enablePan={true}
-        screenSpacePanning={true}
         minDistance={5}
         maxDistance={300}
-        minPolarAngle={0}
-        maxPolarAngle={Math.PI}
       />
     </>
   );
@@ -86,7 +84,7 @@ function SceneControls() {
   );
 
   return (
-    <div className="absolute top-6 left-6 z-10 flex flex-col items-start gap-4 pointer-events-auto">
+    <div className="absolute top-6 left-6 z-10 flex flex-col items-start gap-4 pointer-events-auto select-none">
       <div className="bg-white/90 backdrop-blur-md p-1.5 rounded-2xl border border-black/5 shadow-xl flex items-center gap-1.5">
         {/* Toggle Frustums */}
         <button 
@@ -128,7 +126,7 @@ function SceneControls() {
 export default function Scene3D({ neighborhood }: { neighborhood: Neighborhood }) {
   return (
     <SceneSettingsProvider neighborhood={neighborhood}>
-      <div className="relative w-full h-full">
+      <div className="relative w-full h-full select-none">
         <SceneControls />
         <Canvas 
           camera={{ position: DEFAULT_CAMERA_POS, fov: 45 }}

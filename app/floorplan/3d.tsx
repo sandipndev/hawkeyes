@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 // @ts-ignore
 import * as THREE from "three";
+import { useFrame, useThree } from "@react-three/fiber";
+import { Html } from "@react-three/drei";
 import { Furniture, type FurnitureItem, type Room, type Floor, type Building, type Neighborhood, type Road } from "./model";
 import { type Vec2, type Vec3 } from "./types";
 import { type CCTV, type TowerCCTV } from "./sensors";
@@ -274,7 +276,7 @@ export function Surface({
   
   return (
     <group position={toVec3Array(position)}>
-      <mesh>
+      <mesh userData={{ isSurface: true }}>
         <boxGeometry args={dimArray} />
         <meshPhysicalMaterial 
           color={color} 
@@ -464,6 +466,19 @@ export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHe
           </>
         )}
 
+        {/* Camera Label */}
+        <Html
+          position={[0, 0.25, 0]}
+          center
+          distanceFactor={15}
+          transform
+          sprite
+        >
+          <div className="px-1.5 py-0.5 rounded bg-slate-800/80 backdrop-blur-sm text-[8px] font-bold text-slate-200 border border-slate-700 shadow-lg whitespace-nowrap select-none">
+            {cctv.name}
+          </div>
+        </Html>
+
         {/* Field of View Visualization (Frustum) */}
         {showCctvFrustums && !isCurrentlyActive && (
           <group position={[0, 0, 0.15]}>
@@ -638,6 +653,303 @@ export function RoadComponent({ road, index }: { road: Road3D; index: number }) 
   );
 }
 
+export type Person3D = {
+  id: string;
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+  type: 'road' | 'room';
+  isThreat: boolean;
+  threatDetectedAt?: number;
+  isPanicking?: boolean;
+  speed: number;
+};
+
+export function PersonComponent({ person }: { person: Person3D }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  
+  useFrame((state) => {
+    if (groupRef.current) {
+      // Direct position update for smoother visual movement
+      groupRef.current.position.copy(person.position);
+    }
+    
+    if (person.isThreat && meshRef.current) {
+      const scale = 1 + Math.sin(state.clock.elapsedTime * 10) * 0.2;
+      meshRef.current.scale.set(scale, scale, scale);
+    } else if (person.isPanicking && meshRef.current) {
+      const scale = 0.8 + Math.sin(state.clock.elapsedTime * 20) * 0.1;
+      meshRef.current.scale.set(scale, scale, scale);
+    } else if (meshRef.current) {
+      meshRef.current.scale.set(1, 1, 1);
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      {/* The dot representing the person */}
+      <mesh ref={meshRef} position={[0, 0.5, 0]}>
+        <sphereGeometry args={[0.2, 16, 16]} />
+        <meshBasicMaterial color={person.isThreat ? "#ef4444" : "#3b82f6"} />
+      </mesh>
+      
+      {/* Identifier Label */}
+      <Html 
+        position={[0, 1.4, 0]} 
+        center 
+        distanceFactor={15} 
+        transform
+        sprite
+      >
+        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none ${person.isThreat ? 'bg-red-500 animate-pulse' : 'bg-blue-500'}${!person.isThreat && person.isPanicking ? ' animate-bounce' : ''}`}>
+          {person.isThreat ? 'THREAT' : 'PERSON'} #{person.id}
+        </div>
+      </Html>
+
+      {/* Ring at the feet */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+        <ringGeometry args={[0.25, 0.3, 32]} />
+        <meshBasicMaterial color={person.isThreat ? "#ef4444" : "#3b82f6"} transparent opacity={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhood3D }) {
+  const [people, setPeople] = useState<Person3D[]>([]);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const { scene } = useThree();
+  
+  // Find valid spawn/target points (room centers or road points)
+  const validPoints = useMemo(() => {
+    const points: { pos: THREE.Vector3; floorY: number; roomId?: string; type: 'road' | 'room' }[] = [];
+    
+    neighborhood3D.buildings.forEach(b => {
+      // Only ground floor (level 0)
+      const groundFloor = b.floors.find(f => f.position.y < 0.5); // Assuming ground floor is at y=0
+      if (groundFloor) {
+        groundFloor.rooms.forEach(r => {
+          points.push({
+            pos: new THREE.Vector3(
+              (r.bounds.min.x + r.bounds.max.x) / 2,
+              0.1, // Ground floor height
+              (r.bounds.min.z + r.bounds.max.z) / 2
+            ),
+            floorY: 0,
+            roomId: r.id,
+            type: 'room'
+          });
+        });
+      }
+    });
+
+    neighborhood3D.roads.forEach(road => {
+      // Add multiple points along the road to ensure better spreading
+      const start = new THREE.Vector3(road.position.x, 0.1, road.position.z);
+      points.push({
+        pos: start,
+        floorY: 0,
+        type: 'road'
+      });
+
+      // Add more points along the road length for better distribution
+      const steps = 3;
+      const dx = Math.sin(road.rotation);
+      const dz = Math.cos(road.rotation);
+      for (let i = 1; i <= steps; i++) {
+        const offset = (road.dimensions.length / 2) * (i / steps);
+        points.push({
+          pos: new THREE.Vector3(road.position.x + dx * offset, 0.1, road.position.z + dz * offset),
+          floorY: 0,
+          type: 'road'
+        });
+        points.push({
+          pos: new THREE.Vector3(road.position.x - dx * offset, 0.1, road.position.z - dz * offset),
+          floorY: 0,
+          type: 'road'
+        });
+      }
+    });
+
+    return points;
+  }, [neighborhood3D]);
+
+  // Initialize people
+  useEffect(() => {
+    if (validPoints.length === 0) return;
+
+    const initialPeople: Person3D[] = Array.from({ length: 10 }).map((_, i) => {
+      // Pick unique start points to ensure spreading
+      const shuffledPoints = [...validPoints].sort(() => Math.random() - 0.5);
+      const startPoint = shuffledPoints[i % shuffledPoints.length];
+      
+      // Filter targets to be of the same type (road or room) to prevent jumping in/out
+      const sameTypePoints = validPoints.filter(vp => vp.type === startPoint.type);
+      const targetPoint = sameTypePoints[Math.floor(Math.random() * sameTypePoints.length)];
+      
+      return {
+        id: (i + 1).toString().padStart(2, '0'),
+        position: startPoint.pos.clone(),
+        target: targetPoint.pos.clone(),
+        type: startPoint.type,
+        isThreat: false,
+        speed: 1 + Math.random() * 2
+      };
+    });
+    setPeople(initialPeople);
+  }, [validPoints]);
+
+  useFrame((state, delta) => {
+    const now = state.clock.elapsedTime;
+    
+    setPeople(prevPeople => {
+      const threats = prevPeople.filter(p => p.isThreat);
+      const threatCount = threats.length;
+
+      return prevPeople.map(p => {
+        const newPos = p.position.clone();
+        let dir = p.target.clone().sub(p.position);
+        const dist = dir.length();
+
+        // 1. Handle Threat State Changes
+        let isThreat = p.isThreat;
+        let threatDetectedAt = p.threatDetectedAt;
+
+        // Force at least one threat if none exist after 5 seconds
+        if (threatCount === 0 && now > 5 && p.id === "01") {
+          isThreat = true;
+          threatDetectedAt = now;
+        }
+
+        // Randomly become a threat even mid-walk if under limit
+        if (!isThreat && threatCount < 3 && Math.random() > 0.999) {
+          isThreat = true;
+          threatDetectedAt = now;
+        }
+
+        if (dist < 0.4) {
+          // Reached target, pick a new one of the same type (road/room)
+          const availablePoints = validPoints.filter(vp => vp.type === p.type);
+          const nextTarget = availablePoints[Math.floor(Math.random() * availablePoints.length)];
+          
+          return {
+            ...p,
+            target: nextTarget.pos.clone(),
+            isThreat,
+            threatDetectedAt
+          };
+        }
+
+        // 2. Movement Logic
+        dir.normalize();
+
+        // 3. Avoidance Logic (Fear of threats)
+        let isPanicking = false;
+        if (!p.isThreat) {
+          threats.forEach(t => {
+            const distToThreat = p.position.distanceTo(t.position);
+            
+            // Panic reaction: Close range (within 15m), move away immediately
+            if (distToThreat < 15) {
+              isPanicking = true;
+              const avoidDir = p.position.clone().sub(t.position).normalize();
+              // When panicking, prioritize avoidance over target
+              dir.lerp(avoidDir, 0.98);
+            } 
+            // Caution reaction: Mid range (within 22.5m) and threat detected for > 1.5s
+            else if (t.threatDetectedAt && (now - t.threatDetectedAt > 1.5) && distToThreat < 22.5) {
+              const avoidDir = p.position.clone().sub(t.position).normalize();
+              const weight = Math.max(0, 1 - distToThreat / 22.5);
+              dir.lerp(avoidDir, weight * 0.8);
+            }
+          });
+        }
+
+        // 3.5. Social Distancing (Avoid other people)
+        prevPeople.forEach(other => {
+          if (other.id === p.id) return;
+          const distToOther = p.position.distanceTo(other.position);
+          if (distToOther < 2) { 
+            const avoidDir = p.position.clone().sub(other.position).normalize();
+            // Stronger push when closer
+            const strength = Math.pow(1 - distToOther / 2, 2);
+            dir.lerp(avoidDir, strength * 0.4);
+          }
+        });
+
+        // 4. Surface Collision Avoidance
+        // We use raycasting to detect walls/surfaces in front
+        raycaster.set(p.position, dir);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        
+        // Only avoid objects marked as surfaces (walls, furniture) but NOT the floor/ground
+        const collision = intersects.find((i: THREE.Intersection) => 
+          i.distance < 0.8 && // Slightly larger distance for safer avoidance
+          i.object.type === 'Mesh' && 
+          i.object.userData.isSurface &&
+          Math.abs(i.face?.normal.y || 0) < 0.5 // Ignore horizontal surfaces like floors
+        );
+
+        if (collision) {
+          // Try to steer away. If we can't find a clear path, we'll stop moving.
+          const axis = new THREE.Vector3(0, 1, 0);
+          dir.applyAxisAngle(axis, Math.PI / 2);
+          
+          // Check again after steering
+          raycaster.set(p.position, dir);
+          const nextIntersects = raycaster.intersectObjects(scene.children, true);
+          const nextCollision = nextIntersects.find((i: THREE.Intersection) => 
+            i.distance < 0.5 && 
+            i.object.type === 'Mesh' && 
+            i.object.userData.isSurface &&
+            Math.abs(i.face?.normal.y || 0) < 0.5
+          );
+          
+          if (nextCollision) {
+            // Still colliding after steering? Stop moving.
+            return { ...p, isThreat, threatDetectedAt, isPanicking };
+          }
+        }
+
+        // Apply movement (speed up slightly if panicking)
+        const moveSpeed = isPanicking ? p.speed * 1.25 : p.speed;
+        const moveStep = dir.multiplyScalar(moveSpeed * delta);
+        
+        // Neighborhood boundaries: don't let people exit a +/- 50m box
+        const nextPos = p.position.clone().add(moveStep);
+        if (Math.abs(nextPos.x) > 50 || Math.abs(nextPos.z) > 50) {
+           return { ...p, isThreat, threatDetectedAt, isPanicking };
+        }
+
+        // Final sanity check: don't move if we'd literally go through a wall
+        raycaster.set(p.position, moveStep.clone().normalize());
+        const finalCheck = raycaster.intersectObjects(scene.children, true);
+        if (finalCheck.some((i: THREE.Intersection) => i.distance < moveStep.length() + 0.2 && i.object.userData.isSurface)) {
+           return { ...p, isThreat, threatDetectedAt, isPanicking };
+        }
+
+        newPos.add(moveStep);
+
+        return {
+          ...p,
+          position: newPos,
+          isThreat,
+          threatDetectedAt,
+          isPanicking
+        };
+      });
+    });
+  });
+
+  return (
+    <group>
+      {people.map(p => (
+        <PersonComponent key={p.id} person={p} />
+      ))}
+    </group>
+  );
+}
+
 export function NeighborhoodComponent({ neighborhood3D }: { neighborhood3D: Neighborhood3D }) {
   return (
     <group>
@@ -650,6 +962,7 @@ export function NeighborhoodComponent({ neighborhood3D }: { neighborhood3D: Neig
       {neighborhood3D.towerCctvs.map((cctv) => (
         <TowerCCTVComponent key={cctv.id} cctv={cctv} />
       ))}
+      <AnimatedPeople neighborhood3D={neighborhood3D} />
     </group>
   );
 }
