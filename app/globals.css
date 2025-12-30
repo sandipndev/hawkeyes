@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-secondary: #a855f7;
+  --color-surface: rgba(255, 255, 255, 0.05);
+  --color-border: rgba(255, 255, 255, 0.1);
+
+  --font-display: ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+}
