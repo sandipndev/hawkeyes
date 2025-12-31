@@ -1,34 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HawkEyes
 
-## Getting Started
+HawkEyes is real-time intelligence for physical spaces. It turns ordinary CCTV networks into a single, coherent system that understands movement, behavior, and intent across an entire facility.
 
-First, run the development server:
+Instead of isolated video feeds watched by tired human eyes, HawkEyes builds a living 3D view of a site and continuously reasons over what’s happening inside it. It doesn’t just monitor. It correlates, learns, and flags risks early — when prevention is still possible!
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How we built it ⚙️
+The web application is built with Next.js focusing on clarity and speed under pressure.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+At the core is a streaming-first architecture. Confluent Cloud acts as the backbone, ingesting raw video frames and structured metadata at scale. Apache Flink processes streams with sub-second latency, enriching frames with spatial and temporal context.
 
-## Learn More
+![image](https://i.postimg.cc/TPwHX8TK/image.png)
 
-To learn more about Next.js, take a look at the following resources:
+On the intelligence side, Google Cloud Vertex AI powers detection and behavior analysis. Vision models handle object detection on every frame, while Gemini (used as a judge model in the loop) helps classify risk levels and anomalies. Structured outputs are stored in BigQuery for fast analytics and Google Cloud Storage for long-term history.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Installation
 
-## Deploy on Vercel
+1. Clone the repository including submodules:
+   ```bash
+   git clone --recursive <repository-url>
+   ```
+2. Navigate to the project directory:
+   ```bash
+   cd HawkEyes/hawkeyes
+   ```
+3. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+4. Set up the infrastructure using Docker:
+   ```bash
+   docker-compose up -d
+   ```
+5. Generate the Prisma client:
+   ```bash
+   npx prisma generate
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Running the Application
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Start the development server for the frontend:
+   ```bash
+   pnpm dev
+   ```
+2. In a separate terminal, start the backend service:
+   ```bash
+   cd backend
+   pnpm dev
+   ```
+3. Access the application at http://localhost:3000.
+
+
+## License
+Licensed under the Apache License 2.0.
