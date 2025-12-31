@@ -12,7 +12,6 @@ import {
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
 import { type Neighborhood } from "./floorplan/model";
 import { type Neighborhood3D } from "./floorplan/3d";
-// @ts-ignore
 import * as THREE from "three";
 
 const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];

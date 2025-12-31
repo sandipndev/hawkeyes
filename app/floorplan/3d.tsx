@@ -1,5 +1,4 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-// @ts-ignore
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";

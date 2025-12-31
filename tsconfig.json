@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "three": ["./node_modules/@types/three"]
     }
   },
   "include": [
