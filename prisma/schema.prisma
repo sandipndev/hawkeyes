@@ -31,8 +31,19 @@ model SitePlan {
   data      Json
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cameras   Camera[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Camera {
+  id         String   @id @default(cuid())
+  name       String
+  rtspFeed   String
+  sitePlanId String
+  sitePlan   SitePlan @relation(fields: [sitePlanId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Account {

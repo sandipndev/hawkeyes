@@ -72,17 +72,18 @@ export default async function DashboardPage() {
               ) : (
                 <div className="grid gap-3">
                   {sitePlans.map((plan) => (
-                    <div 
+                    <Link
                       key={plan.id}
-                      className="p-3 bg-neutral-800 rounded-xl border border-neutral-700 hover:border-neutral-600 transition-colors group"
+                      href={`/siteplan/${plan.id}`}
+                      className="p-3 bg-neutral-800 rounded-xl border border-neutral-700 hover:border-blue-500/50 hover:bg-neutral-800/80 transition-all group block"
                     >
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-sm">{plan.name}</span>
+                        <span className="font-medium text-sm group-hover:text-blue-400 transition-colors">{plan.name}</span>
                         <span className="text-[10px] text-neutral-500 uppercase">
                           {new Date(plan.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
