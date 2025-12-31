@@ -40,7 +40,7 @@ import { neighborhoodTo3D } from "@/app/floorplan/3d"
 
 // --- Types ---
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4;
 type Tool = 'building' | 'road' | 'tower-cctv' | 'room' | 'furniture' | 'cctv' | 'select' | 'move' | 'hand';
 
 interface Selection {
@@ -100,7 +100,9 @@ export default function NewSiteWizard() {
 
   const handleNext = () => {
     if (step === 1) {
-      // Auto-select building if we're moving to Step 2
+      setStep(2)
+    } else if (step === 2) {
+      // Auto-select building if we're moving to Step 3
       if (selection?.type === 'building') {
         setSelectedBuildingId(selection.id);
         const b = neighborhood.buildings.find(b => b.id === selection.id);
@@ -112,14 +114,15 @@ export default function NewSiteWizard() {
         setSelectedBuildingId(neighborhood.buildings[0].id);
         setSelectedFloorId(neighborhood.buildings[0].floors[0].id);
       }
-      setStep(2)
+      setStep(3)
     }
-    else if (step === 2) setStep(3)
+    else if (step === 3) setStep(4)
   }
 
   const handleBack = () => {
     if (step === 2) setStep(1)
     else if (step === 3) setStep(2)
+    else if (step === 4) setStep(3)
   }
 
   const handleSave = async () => {
@@ -198,7 +201,7 @@ export default function NewSiteWizard() {
 
         {/* Steps Progress */}
         <div className="flex gap-8">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div key={s} className="flex items-center gap-2">
               <div className={cn(
                 "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-300",
@@ -211,7 +214,7 @@ export default function NewSiteWizard() {
                 "text-[10px] font-bold uppercase tracking-widest",
                 step === s ? "text-white" : "text-neutral-500"
               )}>
-                {s === 1 ? "Site Layout" : s === 2 ? "Building Details" : "Finalize"}
+                {s === 1 ? "Site Name" : s === 2 ? "Site Layout" : s === 3 ? "Building Details" : "Finalize"}
               </span>
             </div>
           ))}
@@ -223,7 +226,7 @@ export default function NewSiteWizard() {
               Back
             </Button>
           )}
-          {step < 3 ? (
+          {step < 4 ? (
             <Button size="sm" onClick={handleNext} className="bg-blue-600 hover:bg-blue-500 px-6 font-bold uppercase tracking-widest text-[10px]">
               Next Step <ChevronRight className="ml-1 w-3 h-3" />
             </Button>
@@ -236,8 +239,48 @@ export default function NewSiteWizard() {
       </header>
 
       <main className="flex-1 flex overflow-hidden relative">
+        {/* Step 1: Site Name */}
+        {step === 1 && (
+          <div className="flex-1 flex flex-col items-center justify-center bg-neutral-950 p-6">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full max-w-md space-y-8"
+            >
+              <div className="text-center space-y-2">
+                <div className="inline-flex p-3 rounded-2xl bg-blue-600/10 border border-blue-500/20 mb-4">
+                  <Layout className="w-8 h-8 text-blue-500" />
+                </div>
+                <h2 className="text-3xl font-black uppercase tracking-tight">Name your site</h2>
+                <p className="text-neutral-500 text-sm">Give your site plan a descriptive name to identify it later.</p>
+              </div>
+
+              <div className="space-y-4 bg-neutral-900/50 backdrop-blur-md border border-neutral-800 p-8 rounded-3xl shadow-2xl">
+                <div className="space-y-2">
+                  <Label htmlFor="site-name" className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Siteplan Name</Label>
+                  <Input 
+                    id="site-name"
+                    placeholder="e.g. Downtown Office, Sunset Campus" 
+                    value={neighborhood.name}
+                    onChange={(e) => setNeighborhood(prev => ({ ...prev, name: e.target.value }))}
+                    className="h-12 bg-neutral-950 border-neutral-800 focus:border-blue-500 text-lg font-bold"
+                    autoFocus
+                  />
+                </div>
+                <Button 
+                  onClick={handleNext}
+                  disabled={!neighborhood.name.trim()}
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-500 text-sm font-bold uppercase tracking-widest transition-all"
+                >
+                  Continue to Layout <ChevronRight className="ml-2 w-4 h-4" />
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Left Toolbar */}
-        {step < 3 && (
+        {(step === 2 || step === 3) && (
           <aside className="w-16 border-r border-neutral-800 bg-neutral-900 flex flex-col items-center py-4 gap-4 z-20">
             <ToolbarButton 
               active={tool === 'select'} 
@@ -259,7 +302,7 @@ export default function NewSiteWizard() {
             />
             <div className="w-8 h-[1px] bg-neutral-800 my-2" />
             
-            {step === 1 && (
+            {step === 2 && (
               <>
                 <ToolbarButton 
                   active={tool === 'building'} 
@@ -282,7 +325,7 @@ export default function NewSiteWizard() {
               </>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <>
                 <ToolbarButton 
                   active={tool === 'room'} 
@@ -328,31 +371,31 @@ export default function NewSiteWizard() {
         )}
 
         {/* Canvas Area */}
-        <div className="flex-1 bg-neutral-950 overflow-hidden relative">
-          <AnimatePresence>
-            {step === 2 && currentBuilding && (
-              <motion.div 
-                initial={{ x: -20, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -20, opacity: 0 }}
-                className="absolute top-6 left-6 z-10 pointer-events-none"
-              >
-                <div className="bg-neutral-900/80 backdrop-blur-md border border-neutral-800 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-blue-600/20 flex items-center justify-center border border-blue-500/30">
-                    <Building2 className="w-4 h-4 text-blue-500" />
+        {(step === 2 || step === 3) && (
+          <div className="flex-1 bg-neutral-950 overflow-hidden relative">
+            <AnimatePresence>
+              {step === 3 && currentBuilding && (
+                <motion.div 
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -20, opacity: 0 }}
+                  className="absolute top-6 left-6 z-10 pointer-events-none"
+                >
+                  <div className="bg-neutral-900/80 backdrop-blur-md border border-neutral-800 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600/20 flex items-center justify-center border border-blue-500/30">
+                      <Building2 className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500/70 leading-none mb-1">Editing Building</div>
+                      <div className="text-lg font-black uppercase tracking-tight text-white leading-none">{currentBuilding.name}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500/70 leading-none mb-1">Editing Building</div>
-                    <div className="text-lg font-black uppercase tracking-tight text-white leading-none">{currentBuilding.name}</div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          {step < 3 ? (
             <SitePlanCanvas 
-              step={step}
+              step={step - 1}
               tool={tool}
               selectedFurnitureType={selectedFurnitureType}
               neighborhood={neighborhood}
@@ -364,16 +407,8 @@ export default function NewSiteWizard() {
               selection={selection}
               setSelection={setSelection}
             />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-white">
-               <SceneSettingsProvider neighborhood={neighborhood}>
-                <Scene3D />
-              </SceneSettingsProvider>
-            </div>
-          )}
 
-          {/* Layers Pane (Overlay on Canvas) */}
-          {step < 3 && (
+            {/* Layers Pane (Overlay on Canvas) */}
             <div className="absolute right-6 top-6 bottom-6 w-64 pointer-events-none flex flex-col gap-4">
                {/* Properties Panel (Top Right) */}
                <AnimatePresence>
@@ -401,7 +436,7 @@ export default function NewSiteWizard() {
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
                    <LayersList 
-                    step={step}
+                    step={step - 1}
                     neighborhood={neighborhood}
                     setNeighborhood={setNeighborhood}
                     selection={selection}
@@ -414,11 +449,19 @@ export default function NewSiteWizard() {
                 </div>
                </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Right 3D Preview Panel (Step 1 & 2) */}
-        {step < 3 && is3DPanelOpen && (
+        {step === 4 && (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-white">
+             <SceneSettingsProvider neighborhood={neighborhood}>
+              <Scene3D />
+            </SceneSettingsProvider>
+          </div>
+        )}
+
+        {/* Right 3D Preview Panel (Step 2 & 3) */}
+        {(step === 2 || step === 3) && is3DPanelOpen && (
           <div 
             style={{ width: panelWidth }}
             className="border-l border-neutral-800 bg-white relative flex-shrink-0"
