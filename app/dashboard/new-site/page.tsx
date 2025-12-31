@@ -1,1269 +1,1626 @@
-"use client";
+"use client"
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { useState, useRef, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { 
-  Neighborhood, 
-  Building, 
-  Road, 
-  TowerCCTV, 
-  Floor, 
-  Room, 
-  Furniture, 
-  FurnitureItem,
-  CCTV
-} from "../../floorplan/model";
-import Scene3D from "../../scene";
-import { SceneSettingsProvider, useSceneSettings } from "../../floorplan/context";
-import { 
-  Plus, 
-  Trash2, 
-  Save, 
-  Box, 
-  Map as MapIcon, 
-  Camera, 
-  Layers, 
-  Check, 
+  ChevronLeft, 
   ChevronRight, 
-  ChevronLeft,
-  MousePointer2,
-  Activity,
-  Home,
-  Monitor,
+  Save, 
+  Layout, 
+  Maximize2, 
+  Layers, 
+  Box, 
+  Settings2,
+  Trash2,
+  Plus,
   Eye,
-  Settings,
-  X,
-  Square
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
+  Camera,
+  Map as MapIcon,
+  Building2,
+  Move,
+  MousePointer2,
+  Hand,
+  Sofa,
+  Bed,
+  Table as TableIcon,
+  Armchair
+} from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
+import { cn } from "@/lib/utils"
+import { motion, AnimatePresence } from "framer-motion"
+import { Neighborhood, Building, Road, Floor, Room, FurnitureItem, TowerCCTV, CCTV, Furniture } from "@/app/floorplan/model"
+import { Vec2 } from "@/app/floorplan/types"
+import { SceneSettingsProvider } from "@/app/floorplan/context"
+import Scene3D from "@/app/scene"
+import { neighborhoodTo3D } from "@/app/floorplan/3d"
 
-type WizardStep = "NEIGHBORHOOD" | "BUILDING_DETAILS" | "FINALIZE";
+// --- Types ---
 
-export default function NewSiteWizard() {
-  const [neighborhood, setNeighborhood] = useState<Neighborhood>({
-    name: "New Site Plan",
-    buildings: [],
-    roads: [],
-    towerCctvs: []
-  });
+type WizardStep = 1 | 2 | 3;
+type Tool = 'building' | 'road' | 'tower-cctv' | 'room' | 'furniture' | 'cctv' | 'select' | 'move' | 'hand';
 
-  return (
-    <SceneSettingsProvider neighborhood={neighborhood}>
-      <NewSiteWizardContent neighborhood={neighborhood} setNeighborhood={setNeighborhood} />
-    </SceneSettingsProvider>
-  );
+interface Selection {
+  type: 'building' | 'road' | 'tower-cctv' | 'floor' | 'room' | 'furniture' | 'cctv';
+  id: string;
+  parentId?: string;
+  grandParentId?: string;
 }
 
-function NewSiteWizardContent({ 
-  neighborhood, 
-  setNeighborhood 
-}: { 
-  neighborhood: Neighborhood, 
-  setNeighborhood: React.Dispatch<React.SetStateAction<Neighborhood>> 
-}) {
-  const { activeCameraId, setActiveCameraId } = useSceneSettings();
-  const [step, setStep] = useState<WizardStep>("NEIGHBORHOOD");
-  
-  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
-  const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
-  const [activeTool, setActiveTool] = useState<"ROAD" | "BUILDING" | "TOWER_CAM" | "SELECT">("BUILDING");
-  const [activeInteriorTool, setActiveInteriorTool] = useState<"ROOM" | "FURNITURE" | "CCTV">("ROOM");
-  const [selectedFurnitureType, setSelectedFurnitureType] = useState<Furniture>(Furniture.Table);
-  
-  // Drawing state
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawStart, setDrawStart] = useState<{x: number, y: number} | null>(null);
-  const [currentMousePos, setCurrentMousePos] = useState<{x: number, y: number} | null>(null);
+// --- Defaults ---
 
-  const currentBuilding = useMemo(() => 
-    neighborhood.buildings.find(b => b.id === selectedBuildingId),
-    [neighborhood.buildings, selectedBuildingId]
-  );
+const DEFAULT_NEIGHBORHOOD: Neighborhood = {
+  name: "New Neighborhood",
+  buildings: [],
+  roads: [],
+  towerCctvs: []
+};
 
-  const currentFloor = useMemo(() => 
-    currentBuilding?.floors.find(f => f.id === selectedFloorId),
-    [currentBuilding, selectedFloorId]
-  );
+// --- Wizard Component ---
 
-  const currentBuildingCenter = useMemo(() => {
-    if (!currentBuilding) return { x: 0, y: 0 };
-    const dim = currentBuilding.floors[0]?.dimensions || { x: 20, y: 20 };
-    return {
-      x: currentBuilding.position.x + dim.x / 2,
-      y: currentBuilding.position.y + dim.y / 2
-    };
-  }, [currentBuilding]);
+export default function NewSiteWizard() {
+  const router = useRouter()
+  const [step, setStep] = useState<WizardStep>(1)
+  const [neighborhood, setNeighborhood] = useState<Neighborhood>(DEFAULT_NEIGHBORHOOD)
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null)
+  const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const [tool, setTool] = useState<Tool>('select')
+  const [is3DPanelOpen, setIs3DPanelOpen] = useState(true)
+  const [selectedFurnitureType, setSelectedFurnitureType] = useState<Furniture>(Furniture.Table)
+  const [panelWidth, setPanelWidth] = useState(400) // px
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const isResizing = useRef(false)
 
-  const selectedCamera = useMemo(() => {
-    if (!activeCameraId) return null;
-    // Check tower cams
-    const towerCam = neighborhood.towerCctvs?.find(c => c.id === activeCameraId);
-    if (towerCam) return { ...towerCam, type: 'TOWER' };
-    
-    // Check indoor cams
-    for (const b of neighborhood.buildings) {
-      for (const f of b.floors) {
-        for (const r of f.rooms) {
-          const cam = r.sensors?.cctvs?.find(c => c.id === activeCameraId);
-          if (cam) return { ...cam, type: 'INDOOR', buildingId: b.id, floorId: f.id, roomId: r.id };
+  // Handle panel resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const newWidth = window.innerWidth - e.clientX
+      setPanelWidth(Math.max(200, Math.min(window.innerWidth * 0.6, newWidth)))
+    }
+    const handleMouseUp = () => {
+      isResizing.current = false
+      document.body.style.cursor = 'default'
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  // Derived 3D data for the preview
+  const neighborhood3D = useMemo(() => neighborhoodTo3D(neighborhood), [neighborhood]);
+
+  const handleNext = () => {
+    if (step === 1) {
+      // Auto-select building if we're moving to Step 2
+      if (selection?.type === 'building') {
+        setSelectedBuildingId(selection.id);
+        const b = neighborhood.buildings.find(b => b.id === selection.id);
+        if (b && b.floors.length > 0) {
+          setSelectedFloorId(b.floors[0].id);
         }
+      } else if (!selectedBuildingId && neighborhood.buildings.length > 0) {
+        // Fallback to first building
+        setSelectedBuildingId(neighborhood.buildings[0].id);
+        setSelectedFloorId(neighborhood.buildings[0].floors[0].id);
       }
+      setStep(2)
     }
-    return null;
-  }, [neighborhood, activeCameraId]);
+    else if (step === 2) setStep(3)
+  }
 
-  // Canvas coordinates to world coordinates (centered, 1 unit = 5px)
-  const scale = step === "NEIGHBORHOOD" ? 5 : 20; // Zoom in for building details
-  
-  const toWorld = (px: number, py: number, canvas: HTMLCanvasElement) => {
-    if (step === "NEIGHBORHOOD") {
-      return {
-        x: (px - canvas.width / 2) / scale,
-        y: (py - canvas.height / 2) / scale
-      };
-    } else {
-      // Offset by building center when in building details
-      const bPos = currentBuilding?.position || {x: 0, y: 0};
-      const bDim = currentBuilding?.floors[0]?.dimensions || {x: 0, y: 0};
-      return {
-        x: (px - canvas.width / 2) / scale + bPos.x + bDim.x / 2,
-        y: (py - canvas.height / 2) / scale + bPos.y + bDim.y / 2
-      };
-    }
-  };
+  const handleBack = () => {
+    if (step === 2) setStep(1)
+    else if (step === 3) setStep(2)
+  }
 
-  const fromWorld = (x: number, y: number, canvas: HTMLCanvasElement) => {
-    if (step === "NEIGHBORHOOD") {
-      return {
-        x: x * scale + canvas.width / 2,
-        y: y * scale + canvas.height / 2
-      };
-    } else {
-      const bPos = currentBuilding?.position || {x: 0, y: 0};
-      const bDim = currentBuilding?.floors[0]?.dimensions || {x: 0, y: 0};
-      return {
-        x: (x - (bPos.x + bDim.x / 2)) * scale + canvas.width / 2,
-        y: (y - (bPos.y + bDim.y / 2)) * scale + canvas.height / 2
-      };
-    }
-  };
+  const handleSave = async () => {
+    setIsLoading(true)
+    setError("")
 
-  const updateCamera = (id: string, updates: Partial<CCTV | TowerCCTV>) => {
-    setNeighborhood(prev => {
-      // Update tower cams
-      if (prev.towerCctvs?.find(c => c.id === id)) {
-        return {
-          ...prev,
-          towerCctvs: prev.towerCctvs.map(c => c.id === id ? { ...c, ...updates } as TowerCCTV : c)
-        };
+    try {
+      const response = await fetch("/api/siteplans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: neighborhood.name,
+          data: neighborhood,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        throw new Error(errorData || "Failed to save site plan")
       }
-      
-      // Update indoor cams
-      return {
-        ...prev,
-        buildings: prev.buildings.map(b => ({
-          ...b,
-          floors: b.floors.map(f => ({
-            ...f,
-            rooms: f.rooms.map(r => ({
-              ...r,
-              sensors: {
-                ...r.sensors,
-                cctvs: r.sensors?.cctvs?.map(c => c.id === id ? { ...c, ...updates } : c)
-              }
-            }))
-          }))
-        }))
-      };
+
+      router.push("/dashboard")
+      router.refresh()
+    } catch (err: any) {
+      setError(err.message || "An error occurred")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const currentBuilding = neighborhood.buildings.find(b => b.id === selectedBuildingId);
+  const currentFloor = currentBuilding?.floors.find(f => f.id === selectedFloorId);
+
+  return (
+    <div className="h-screen bg-neutral-950 text-white flex flex-col overflow-hidden">
+      {/* Header */}
+      <header className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-900/50 backdrop-blur-md z-30">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard" className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
+            <ChevronLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-xs font-bold uppercase tracking-widest text-neutral-500">Site Wizard</h1>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-black tracking-tight uppercase truncate max-w-[150px]">{neighborhood.name}</h2>
+              {step === 2 && currentBuilding && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-neutral-700" />
+                  <div className="flex items-center gap-2 bg-blue-600/10 px-2 py-0.5 rounded border border-blue-500/20 group relative">
+                    <Building2 className="w-3 h-3 text-blue-500" />
+                    <select 
+                      value={selectedBuildingId || ""}
+                      onChange={(e) => {
+                        const bId = e.target.value;
+                        setSelectedBuildingId(bId);
+                        const b = neighborhood.buildings.find(b => b.id === bId);
+                        if (b && b.floors.length > 0) {
+                          setSelectedFloorId(b.floors[0].id);
+                        }
+                        setSelection(null);
+                      }}
+                      className="bg-transparent border-none text-sm font-black tracking-tight uppercase text-blue-400 focus:outline-none cursor-pointer hover:text-blue-300 transition-colors pr-1"
+                    >
+                      {neighborhood.buildings.map(b => (
+                        <option key={b.id} value={b.id} className="bg-neutral-900 text-white">
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Steps Progress */}
+        <div className="flex gap-8">
+          {[1, 2, 3].map((s) => (
+            <div key={s} className="flex items-center gap-2">
+              <div className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-300",
+                step === s ? "bg-blue-600 border-blue-500 shadow-[0_0_10px_rgba(37,99,235,0.5)]" : 
+                step > s ? "bg-emerald-600 border-emerald-500" : "bg-neutral-800 border-neutral-700 text-neutral-500"
+              )}>
+                {step > s ? "✓" : s}
+              </div>
+              <span className={cn(
+                "text-[10px] font-bold uppercase tracking-widest",
+                step === s ? "text-white" : "text-neutral-500"
+              )}>
+                {s === 1 ? "Site Layout" : s === 2 ? "Building Details" : "Finalize"}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          {step > 1 && (
+            <Button variant="ghost" size="sm" onClick={handleBack} className="text-neutral-400 hover:text-white">
+              Back
+            </Button>
+          )}
+          {step < 3 ? (
+            <Button size="sm" onClick={handleNext} className="bg-blue-600 hover:bg-blue-500 px-6 font-bold uppercase tracking-widest text-[10px]">
+              Next Step <ChevronRight className="ml-1 w-3 h-3" />
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleSave} disabled={isLoading} className="bg-emerald-600 hover:bg-emerald-500 px-6 font-bold uppercase tracking-widest text-[10px]">
+              {isLoading ? "Saving..." : <><Save className="mr-1 w-3 h-3" /> Save Plan</>}
+            </Button>
+          )}
+        </div>
+      </header>
+
+      <main className="flex-1 flex overflow-hidden relative">
+        {/* Left Toolbar */}
+        {step < 3 && (
+          <aside className="w-16 border-r border-neutral-800 bg-neutral-900 flex flex-col items-center py-4 gap-4 z-20">
+            <ToolbarButton 
+              active={tool === 'select'} 
+              onClick={() => setTool('select')} 
+              icon={<MousePointer2 className="w-5 h-5" />} 
+              label="Select" 
+            />
+            <ToolbarButton 
+              active={tool === 'move'} 
+              onClick={() => setTool('move')} 
+              icon={<Move className="w-5 h-5" />} 
+              label="Move" 
+            />
+            <ToolbarButton 
+              active={tool === 'hand'} 
+              onClick={() => setTool('hand')} 
+              icon={<Hand className="w-5 h-5" />} 
+              label="Pan" 
+            />
+            <div className="w-8 h-[1px] bg-neutral-800 my-2" />
+            
+            {step === 1 && (
+              <>
+                <ToolbarButton 
+                  active={tool === 'building'} 
+                  onClick={() => setTool('building')} 
+                  icon={<Building2 className="w-5 h-5" />} 
+                  label="Building" 
+                />
+                <ToolbarButton 
+                  active={tool === 'road'} 
+                  onClick={() => setTool('road')} 
+                  icon={<MapIcon className="w-5 h-5" />} 
+                  label="Road" 
+                />
+                <ToolbarButton 
+                  active={tool === 'tower-cctv'} 
+                  onClick={() => setTool('tower-cctv')} 
+                  icon={<Camera className="w-5 h-5" />} 
+                  label="Tower CCTV" 
+                />
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <ToolbarButton 
+                  active={tool === 'room'} 
+                  onClick={() => setTool('room')} 
+                  icon={<Box className="w-5 h-5" />} 
+                  label="Room" 
+                />
+                <div className="w-8 h-[1px] bg-neutral-800 my-1" />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Table} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Table); }} 
+                  icon={<TableIcon className="w-5 h-5" />} 
+                  label="Table" 
+                />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Bed} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Bed); }} 
+                  icon={<Bed className="w-5 h-5" />} 
+                  label="Bed" 
+                />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Sofa} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Sofa); }} 
+                  icon={<Sofa className="w-5 h-5" />} 
+                  label="Sofa" 
+                />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Chair} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Chair); }} 
+                  icon={<Armchair className="w-5 h-5" />} 
+                  label="Chair" 
+                />
+                <div className="w-8 h-[1px] bg-neutral-800 my-1" />
+                <ToolbarButton 
+                  active={tool === 'cctv'} 
+                  onClick={() => setTool('cctv')} 
+                  icon={<Camera className="w-5 h-5" />} 
+                  label="Internal CCTV" 
+                />
+              </>
+            )}
+          </aside>
+        )}
+
+        {/* Canvas Area */}
+        <div className="flex-1 bg-neutral-950 overflow-hidden relative">
+          <AnimatePresence>
+            {step === 2 && currentBuilding && (
+              <motion.div 
+                initial={{ x: -20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -20, opacity: 0 }}
+                className="absolute top-6 left-6 z-10 pointer-events-none"
+              >
+                <div className="bg-neutral-900/80 backdrop-blur-md border border-neutral-800 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600/20 flex items-center justify-center border border-blue-500/30">
+                    <Building2 className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500/70 leading-none mb-1">Editing Building</div>
+                    <div className="text-lg font-black uppercase tracking-tight text-white leading-none">{currentBuilding.name}</div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {step < 3 ? (
+            <SitePlanCanvas 
+              step={step}
+              tool={tool}
+              selectedFurnitureType={selectedFurnitureType}
+              neighborhood={neighborhood}
+              setNeighborhood={setNeighborhood}
+              selectedBuildingId={selectedBuildingId}
+              setSelectedBuildingId={setSelectedBuildingId}
+              selectedFloorId={selectedFloorId}
+              setSelectedFloorId={setSelectedFloorId}
+              selection={selection}
+              setSelection={setSelection}
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-white">
+               <SceneSettingsProvider neighborhood={neighborhood}>
+                <Scene3D />
+              </SceneSettingsProvider>
+            </div>
+          )}
+
+          {/* Layers Pane (Overlay on Canvas) */}
+          {step < 3 && (
+            <div className="absolute right-6 top-6 bottom-6 w-64 pointer-events-none flex flex-col gap-4">
+               {/* Properties Panel (Top Right) */}
+               <AnimatePresence>
+                {selection && (
+                  <motion.div
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -20, opacity: 0 }}
+                    className="pointer-events-auto bg-neutral-900/90 backdrop-blur-md border border-neutral-800 rounded-2xl shadow-2xl p-4 overflow-hidden"
+                  >
+                    <PropertiesPanel 
+                      selection={selection} 
+                      neighborhood={neighborhood} 
+                      setNeighborhood={setNeighborhood} 
+                    />
+                  </motion.div>
+                )}
+               </AnimatePresence>
+
+               {/* Layers Pane */}
+               <div className="pointer-events-auto flex-1 bg-neutral-900/80 backdrop-blur-md border border-neutral-800 rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                <div className="p-4 border-b border-neutral-800 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-blue-500" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Layers</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2">
+                   <LayersList 
+                    step={step}
+                    neighborhood={neighborhood}
+                    setNeighborhood={setNeighborhood}
+                    selection={selection}
+                    setSelection={setSelection}
+                    selectedBuildingId={selectedBuildingId}
+                    setSelectedBuildingId={setSelectedBuildingId}
+                    selectedFloorId={selectedFloorId}
+                    setSelectedFloorId={setSelectedFloorId}
+                   />
+                </div>
+               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right 3D Preview Panel (Step 1 & 2) */}
+        {step < 3 && is3DPanelOpen && (
+          <div 
+            style={{ width: panelWidth }}
+            className="border-l border-neutral-800 bg-white relative flex-shrink-0"
+          >
+            <div className="absolute top-4 left-4 z-10">
+              <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
+                <Eye className="w-3 h-3 text-blue-600" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Live 3D View</span>
+              </div>
+            </div>
+            <div className="w-full h-full">
+               <SceneSettingsProvider neighborhood={neighborhood}>
+                <Scene3D />
+              </SceneSettingsProvider>
+            </div>
+            
+            {/* Resize handle */}
+            <div 
+              onMouseDown={(e) => {
+                isResizing.current = true;
+                document.body.style.cursor = 'col-resize';
+              }}
+              className="absolute inset-y-0 -left-1 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors z-50" 
+            />
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+// --- Sub-components ---
+
+function ToolbarButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+        active ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]" : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+      )}
+      title={label}
+    >
+      {icon}
+      <div className="absolute left-14 bg-neutral-800 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap border border-neutral-700 z-50">
+        {label}
+      </div>
+    </button>
+  )
+}
+
+// --- SitePlanCanvas (The most complex part) ---
+
+function SitePlanCanvas({ 
+  step, 
+  tool, 
+  selectedFurnitureType,
+  neighborhood, 
+  setNeighborhood,
+  selectedBuildingId,
+  setSelectedBuildingId,
+  selectedFloorId,
+  setSelectedFloorId,
+  selection,
+  setSelection
+}: any) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(40) // px per unit
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [drawStart, setDrawStart] = useState<Vec2 | null>(null)
+  const [mousePos, setMousePos] = useState<Vec2 | null>(null)
+  const [dragStart, setDragStart] = useState<Vec2 | null>(null)
+
+  const moveObject = (sel: Selection, dx: number, dy: number) => {
+    setNeighborhood((prev: Neighborhood) => {
+        const updated = JSON.parse(JSON.stringify(prev));
+        if (sel.type === 'building') {
+            const b = updated.buildings.find((b: Building) => b.id === sel.id);
+            if (b) { b.position.x += dx; b.position.y += dy; }
+        } else if (sel.type === 'road') {
+            const r = updated.roads.find((r: Road) => r.id === sel.id);
+            if (r) {
+                r.start.x += dx; r.start.y += dy;
+                r.end.x += dx; r.end.y += dy;
+            }
+        } else if (sel.type === 'tower-cctv') {
+            const t = updated.towerCctvs?.find((t: TowerCCTV) => t.id === sel.id);
+            if (t) { t.position.x += dx; t.position.y += dy; }
+        } else if (sel.type === 'room') {
+            const b = updated.buildings.find((b: Building) => b.id === sel.grandParentId);
+            const f = b?.floors.find((f: Floor) => f.id === sel.parentId);
+            const r = f?.rooms.find((r: Room) => r.id === sel.id);
+            if (r) { r.position.x += dx; r.position.y += dy; }
+        } else if (sel.type === 'cctv') {
+            for (const b of updated.buildings) {
+                for (const f of b.floors) {
+                    for (const r of f.rooms) {
+                        const c = r.sensors?.cctvs?.find((c: CCTV) => c.id === sel.id);
+                        if (c) { c.position.x += dx; c.position.y += dy; return updated; }
+                    }
+                }
+            }
+        } else if (sel.type === 'furniture') {
+            for (const b of updated.buildings) {
+                for (const f of b.floors) {
+                    for (const r of f.rooms) {
+                        const fur = r.furniture.find((fur: any) => fur.id === sel.id);
+                        if (fur) { fur.position.x += dx; fur.position.y += dy; return updated; }
+                    }
+                }
+            }
+        }
+        return updated;
     });
   };
 
+  // Canvas coordinate transform
+  const screenToWorld = (x: number, y: number): Vec2 => {
+    return {
+      x: (x - offset.x) / zoom,
+      y: (y - offset.y) / zoom
+    }
+  }
+
+  const worldToScreen = (x: number, y: number): Vec2 => {
+    return {
+      x: x * zoom + offset.x,
+      y: y * zoom + offset.y
+    }
+  }
+
+  // Effect to center building in Step 2
+  useEffect(() => {
+    if (step === 2 && selectedBuildingId) {
+      const building = neighborhood.buildings.find((b: Building) => b.id === selectedBuildingId);
+      if (building && canvasRef.current) {
+        const { width, height } = canvasRef.current;
+        setOffset({
+          x: width / 2 - building.position.x * zoom,
+          y: height / 2 - building.position.y * zoom
+        })
+      }
+    } else if (step === 1 && canvasRef.current) {
+        // Initial center
+        const { width, height } = canvasRef.current;
+        setOffset({ x: width / 2, y: height / 2 });
+    }
+  }, [step, selectedBuildingId]);
+
+  // Handle Resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (canvasRef.current) {
+        const parent = canvasRef.current.parentElement;
+        if (parent) {
+          canvasRef.current.width = parent.clientWidth;
+          canvasRef.current.height = parent.clientHeight;
+        }
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Drawing Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Resize canvas to parent
-    const resize = () => {
-      const parent = canvas.parentElement;
-      if (parent) {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
-      }
-    };
-    resize();
-    
-    const observer = new ResizeObserver(resize);
-    if (canvas.parentElement) observer.observe(canvas.parentElement);
+    let animationFrameId: number;
 
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       // Draw Grid
-      ctx.strokeStyle = '#222';
-      ctx.lineWidth = 1;
-      const gridSize = 20;
-      
-      if (step === "NEIGHBORHOOD") {
-        // Absolute grid for Neighborhood
-        const startY = (canvas.height / 2) % gridSize;
-        for(let y = startY; y < canvas.height; y += gridSize) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        }
-        const startX = (canvas.width / 2) % gridSize;
-        for(let x = startX; x < canvas.width; x += gridSize) {
-          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-        }
+      drawGrid(ctx, canvas.width, canvas.height, offset, zoom);
 
-        // Origin lines at world center
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke();
-
+      if (step === 1) {
         // Draw Roads
-        neighborhood.roads.forEach(road => {
-          const start = fromWorld(road.start.x, road.start.y, canvas);
-          const end = fromWorld(road.end.x, road.end.y, canvas);
-          ctx.strokeStyle = '#1e293b';
-          ctx.lineWidth = road.width * scale;
-          ctx.lineCap = 'square';
-          ctx.beginPath();
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-        });
+        neighborhood.roads.forEach((road: Road) => drawRoad(ctx, road, worldToScreen));
+        // Draw Buildings
+        neighborhood.buildings.forEach((building: Building) => drawBuilding(ctx, building, worldToScreen, selection?.id === building.id));
+        // Draw Tower CCTVs
+        neighborhood.towerCctvs.forEach((cctv: TowerCCTV) => drawTowerCCTV(ctx, cctv, worldToScreen, selection?.id === cctv.id));
+      } else if (step === 2) {
+        // Draw Roads for context
+        neighborhood.roads.forEach((road: Road) => drawRoad(ctx, road, worldToScreen));
+        // Draw Tower CCTVs for context
+        neighborhood.towerCctvs.forEach((cctv: TowerCCTV) => drawTowerCCTV(ctx, cctv, worldToScreen, selection?.id === cctv.id));
 
         // Draw Buildings
-        neighborhood.buildings.forEach(b => {
-          const pos = fromWorld(b.position.x, b.position.y, canvas);
-          const dim = b.floors[0]?.dimensions || {x: 10, y: 10};
-          const isSelected = selectedBuildingId === b.id;
-          ctx.fillStyle = isSelected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)';
-          ctx.fillRect(pos.x, pos.y, dim.x * scale, dim.y * scale);
-          ctx.strokeStyle = isSelected ? '#3b82f6' : '#334155';
-          ctx.lineWidth = isSelected ? 2 : 1;
-          ctx.strokeRect(pos.x, pos.y, dim.x * scale, dim.y * scale);
-        });
+        neighborhood.buildings.forEach((building: Building) => {
+          const isSelected = selectedBuildingId === building.id;
+          const currentFloor = isSelected && selectedFloorId 
+            ? building.floors.find((f: Floor) => f.id === selectedFloorId) 
+            : building.floors[0];
 
-        // Draw Tower CCTVs
-        neighborhood.towerCctvs?.forEach(cam => {
-          const pos = fromWorld(cam.position.x, cam.position.y, canvas);
-          const isSelected = activeCameraId === cam.id;
-          
-          ctx.save();
-          ctx.translate(pos.x, pos.y);
-          ctx.rotate((cam.yaw || 0) * Math.PI / 180);
-          
-          // Calculate cone size based on pitch (smaller as it points down more)
-          const coneSize = 60 * Math.cos((cam.pitch || 0) * Math.PI / 180);
-          
-          ctx.fillStyle = isSelected ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.15)';
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          const fovRad = (cam.fov * Math.PI) / 180;
-          ctx.arc(0, 0, coneSize, -fovRad/2 - Math.PI/2, fovRad/2 - Math.PI/2);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-          
-          ctx.fillStyle = '#ef4444';
-          ctx.beginPath(); ctx.arc(pos.x, pos.y, isSelected ? 6 : 4, 0, Math.PI * 2); ctx.fill();
-          if (isSelected) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+          drawBuilding(ctx, building, worldToScreen, isSelected || selection?.id === building.id, isSelected, currentFloor);
+
+          if (isSelected && selectedFloorId) {
+            const floor = building.floors.find((f: Floor) => f.id === selectedFloorId);
+            if (floor) {
+              // Draw Rooms
+              floor.rooms.forEach((room: Room) => drawRoom(ctx, room, building.position, worldToScreen, selection?.id === room.id));
+              
+              // Internal CCTVs
+              floor.rooms.forEach((room: Room) => {
+                room.sensors?.cctvs?.forEach((cctv: CCTV) => {
+                  drawInternalCCTV(ctx, cctv, room.position, building.position, worldToScreen, selection?.id === cctv.id);
+                });
+              });
+
+              // Furniture
+              floor.rooms.forEach((room: Room) => {
+                room.furniture.forEach((f: FurnitureItem) => {
+                   drawFurniture(ctx, f, room.position, building.position, worldToScreen, selection?.id === f.id);
+                });
+              });
+            }
           }
-        });
-      } else if (step === "BUILDING_DETAILS" && currentBuilding) {
-        const bDim = currentBuilding.floors[0]?.dimensions || {x: 20, y: 20};
-        const bPos2D = fromWorld(currentBuilding.position.x, currentBuilding.position.y, canvas);
-        const bCenter2D = fromWorld(currentBuildingCenter.x, currentBuildingCenter.y, canvas);
-
-        // Grid aligned to building center
-        const startY = bCenter2D.y % gridSize;
-        for(let y = startY; y < canvas.height; y += gridSize) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        }
-        const startX = bCenter2D.x % gridSize;
-        for(let x = startX; x < canvas.width; x += gridSize) {
-          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-        }
-
-        // Origin lines at building center (the "0,0" point for rooms)
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(bCenter2D.x, 0); ctx.lineTo(bCenter2D.x, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, bCenter2D.y); ctx.lineTo(canvas.width, bCenter2D.y); ctx.stroke();
-
-        // Draw building background (more visible)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fillRect(bPos2D.x, bPos2D.y, bDim.x * scale, bDim.y * scale);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bPos2D.x, bPos2D.y, bDim.x * scale, bDim.y * scale);
-        
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.font = 'bold 12px Inter';
-        ctx.fillText(currentBuilding.name.toUpperCase(), bPos2D.x + 10, bPos2D.y + 25);
-
-        // Draw Rooms in current floor
-        currentFloor?.rooms.forEach(room => {
-          const bPos = currentBuilding.position;
-          const rPos = fromWorld(bPos.x + room.position.x, bPos.y + room.position.y, canvas);
-          ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-          ctx.fillRect(rPos.x, rPos.y, room.dimensions.x * scale, room.dimensions.y * scale);
-          ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(rPos.x, rPos.y, room.dimensions.x * scale, room.dimensions.y * scale);
-          
-          ctx.fillStyle = '#3b82f6';
-          ctx.font = 'bold 9px Inter';
-          ctx.fillText(room.name.toUpperCase(), rPos.x + 5, rPos.y + 12);
-
-          // Draw furniture in room
-          room.furniture.forEach(item => {
-             const fPos = fromWorld(bPos.x + room.position.x + item.position.x, bPos.y + room.position.y + item.position.y, canvas);
-             ctx.fillStyle = 'rgba(255,255,255,0.2)';
-             ctx.fillRect(fPos.x - 5, fPos.y - 5, 10, 10);
-             ctx.strokeStyle = '#fff';
-             ctx.lineWidth = 1;
-             ctx.strokeRect(fPos.x - 5, fPos.y - 5, 10, 10);
-          });
-
-          // Draw CCTVs in room
-          room.sensors?.cctvs?.forEach(cam => {
-             const cPos = fromWorld(bPos.x + room.position.x + cam.position.x, bPos.y + room.position.y + cam.position.y, canvas);
-             const isSelected = activeCameraId === cam.id;
-             
-             ctx.save();
-             ctx.translate(cPos.x, cPos.y);
-             ctx.rotate((cam.yaw || 0) * Math.PI / 180);
-             
-             const coneSize = 40 * Math.cos((cam.pitch || 0) * Math.PI / 180);
-             
-             ctx.fillStyle = isSelected ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.2)';
-             ctx.beginPath();
-             ctx.moveTo(0, 0);
-             const fovRad = (cam.fov * Math.PI) / 180;
-             ctx.arc(0, 0, coneSize, -fovRad/2 - Math.PI/2, fovRad/2 - Math.PI/2);
-             ctx.closePath();
-             ctx.fill();
-             ctx.restore();
-             
-             ctx.fillStyle = '#ef4444';
-             ctx.beginPath(); ctx.arc(cPos.x, cPos.y, isSelected ? 5 : 3, 0, Math.PI * 2); ctx.fill();
-             if (isSelected) {
-               ctx.strokeStyle = '#fff';
-               ctx.lineWidth = 2;
-               ctx.stroke();
-             }
-          });
         });
       }
 
-      // Draw Active Preview
-      if (isDrawing && drawStart && currentMousePos) {
-        ctx.strokeStyle = '#3b82f6';
-        ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1;
-        
-        const tool = step === "NEIGHBORHOOD" ? activeTool : activeInteriorTool;
-        
-        if (tool === "ROAD" || tool === "ROOM") {
-          if (tool === "ROAD") {
-            ctx.beginPath();
-            ctx.moveTo(drawStart.x, drawStart.y);
-            ctx.lineTo(currentMousePos.x, currentMousePos.y);
-            ctx.stroke();
-          } else {
-            ctx.strokeRect(
-              drawStart.x, 
-              drawStart.y, 
-              currentMousePos.x - drawStart.x, 
-              currentMousePos.y - drawStart.y
-            );
-          }
-        } else if (tool === "BUILDING") {
-          ctx.strokeRect(
-            drawStart.x, 
-            drawStart.y, 
-            currentMousePos.x - drawStart.x, 
-            currentMousePos.y - drawStart.y
-          );
-        } else if (tool === "TOWER_CAM" || tool === "CCTV") {
-          ctx.beginPath();
-          ctx.arc(currentMousePos.x, currentMousePos.y, 4, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.setLineDash([]);
+      // Draw Preview if drawing
+      if (isDrawing && drawStart && mousePos) {
+        drawPreview(ctx, tool, drawStart, mousePos, worldToScreen);
       }
 
-      requestAnimationFrame(render);
+      animationFrameId = requestAnimationFrame(render);
     };
 
-    const animId = requestAnimationFrame(render);
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(animId);
-    };
-  }, [neighborhood, isDrawing, drawStart, currentMousePos, activeTool, activeInteriorTool, selectedBuildingId, step, selectedFloorId, currentBuilding, currentFloor]);
+    render();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [neighborhood, offset, zoom, isDrawing, drawStart, mousePos, selection, step, tool, selectedBuildingId, selectedFloorId]);
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+  // Mouse Handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const worldPos = screenToWorld(x, y);
 
-    const tool = step === "NEIGHBORHOOD" ? activeTool : activeInteriorTool;
-    const worldPos = toWorld(x, y, canvas);
-
-    // 1. Always try camera selection first (priority interaction)
-    const clickedTowerCam = neighborhood.towerCctvs?.find(c => {
-      const pos = fromWorld(c.position.x, c.position.y, canvas);
-      return Math.hypot(x - pos.x, y - pos.y) < 15; // Slightly larger hit area for easier selection
-    });
-
-    if (clickedTowerCam) {
-      setActiveCameraId(clickedTowerCam.id);
-      setSelectedBuildingId(null);
+    if (e.button === 1 || (e.button === 0 && tool === 'hand')) {
+      // Pan start
+      setDragStart({ x, y });
       return;
     }
 
-    if (step === "BUILDING_DETAILS" && currentBuilding) {
-      for (const r of currentFloor?.rooms || []) {
-        const clickedCam = r.sensors?.cctvs?.find(c => {
-          const bPos = currentBuilding.position;
-          const cPos = fromWorld(bPos.x + r.position.x + c.position.x, bPos.y + r.position.y + c.position.y, canvas);
-          return Math.hypot(x - cPos.x, y - cPos.y) < 12;
-        });
-        if (clickedCam) {
-          setActiveCameraId(clickedCam.id);
-          return;
+    if (e.button === 0 && (tool === 'select' || tool === 'move')) {
+      // Try to select something
+      const hit = findHitObject(worldPos, step, neighborhood, selectedBuildingId, selectedFloorId);
+      if (hit) {
+        setSelection(hit);
+        if (tool === 'move') {
+          setDragStart({ x, y });
         }
+        return;
+      } else if (tool === 'select') {
+        setSelection(null);
       }
     }
 
-    // 2. If no camera clicked, try selecting building/room
-    if (step === "NEIGHBORHOOD") {
-      const clickedBuilding = neighborhood.buildings.find(b => {
-        const dim = b.floors[0]?.dimensions || {x: 10, y: 10};
-        return worldPos.x >= b.position.x && worldPos.x <= b.position.x + dim.x &&
-               worldPos.y >= b.position.y && worldPos.y <= b.position.y + dim.y;
-      });
-      
-      if (clickedBuilding) {
-        setSelectedBuildingId(clickedBuilding.id);
-        setActiveCameraId(null);
-        setSelectedFloorId(clickedBuilding.floors[0]?.id || null);
-        return; // Don't start drawing if we just selected a building
-      }
-    } else if (step === "BUILDING_DETAILS" && currentBuilding) {
-      const clickedRoom = currentFloor?.rooms.find(r => {
-        const bPos = currentBuilding.position;
-        const rx = bPos.x + r.position.x;
-        const ry = bPos.y + r.position.y;
-        return worldPos.x >= rx && worldPos.x <= rx + r.dimensions.x &&
-               worldPos.y >= ry && worldPos.y <= ry + r.dimensions.y;
-      });
-      
-      if (clickedRoom) {
-        // Room selected, but we don't have room-specific settings yet
-        // Clear camera selection
-        setActiveCameraId(null);
-        // If tool is FURNITURE or CCTV, we want to allow drawing inside the room, 
-        // so we don't return here.
-      } else {
-        setActiveCameraId(null);
-      }
+    if (tool !== 'select' && tool !== 'move' && tool !== 'hand') {
+      setIsDrawing(true);
+      setDrawStart(worldPos);
+      setMousePos(worldPos);
     }
-
-    // 3. Fallback to drawing if no priority selection happened
-    setIsDrawing(true);
-    setDrawStart({x, y});
-    setCurrentMousePos({x, y});
   };
 
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    setCurrentMousePos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const worldPos = screenToWorld(x, y);
+
+    if (dragStart) {
+      if (tool === 'hand' || e.button === 1) {
+        setOffset(prev => ({
+          x: prev.x + (x - dragStart.x),
+          y: prev.y + (y - dragStart.y)
+        }));
+      } else if (tool === 'move' && selection) {
+        // Move object
+        const dx = (x - dragStart.x) / zoom;
+        const dy = (y - dragStart.y) / zoom;
+        moveObject(selection, dx, dy);
+      }
+      setDragStart({ x, y });
+      return;
+    }
+
+    if (isDrawing) {
+      if (e.shiftKey && tool === 'road' && drawStart) {
+        // Snap to horizontal or vertical
+        const dx = Math.abs(worldPos.x - drawStart.x);
+        const dy = Math.abs(worldPos.y - drawStart.y);
+        if (dx > dy) {
+          setMousePos({ x: worldPos.x, y: drawStart.y });
+        } else {
+          setMousePos({ x: drawStart.x, y: worldPos.y });
+        }
+      } else {
+        setMousePos(worldPos);
+      }
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (dragStart) {
+      setDragStart(null);
+      return;
+    }
+
+    if (isDrawing && drawStart && mousePos) {
+      finishDrawing(drawStart, mousePos);
+    }
+    setIsDrawing(false);
+    setDrawStart(null);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const zoomSpeed = 0.1;
+    const delta = e.deltaY > 0 ? 1 - zoomSpeed : 1 + zoomSpeed;
+    const newZoom = Math.max(5, Math.min(100, zoom * delta));
+    
+    // Zoom around mouse
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const worldPos = screenToWorld(mouseX, mouseY);
+    
+    setZoom(newZoom);
+    setOffset({
+      x: mouseX - worldPos.x * newZoom,
+      y: mouseY - worldPos.y * newZoom
     });
   };
 
-  const onMouseUp = (e: React.MouseEvent) => {
-    if (!isDrawing || !drawStart || !currentMousePos) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const finishDrawing = (start: Vec2, end: Vec2) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    
+    if (step === 1) {
+      if (tool === 'building') {
+        const x = Math.min(start.x, end.x);
+        const y = Math.min(start.y, end.y);
+        const w = Math.abs(start.x - end.x);
+        const h = Math.abs(start.y - end.y);
+        if (w < 1 || h < 1) return;
 
-    const startWorld = toWorld(drawStart.x, drawStart.y, canvas);
-    const endWorld = toWorld(currentMousePos.x, currentMousePos.y, canvas);
-
-    if (step === "NEIGHBORHOOD") {
-      if (activeTool === "ROAD") {
+        const newBuilding: Building = {
+          id,
+          name: `Building ${neighborhood.buildings.length + 1}`,
+          position: { x: x + w/2, y: y + h/2 },
+          floors: [{
+            id: Math.random().toString(36).substr(2, 9),
+            level: 0,
+            height: 4,
+            dimensions: { x: w, y: h },
+            rooms: []
+          }]
+        };
+        setNeighborhood((prev: Neighborhood) => ({
+          ...prev,
+          buildings: [...prev.buildings, newBuilding]
+        }));
+        setSelection({ type: 'building', id });
+      } else if (tool === 'road') {
         const newRoad: Road = {
-          id: `road-${Date.now()}`,
-          start: startWorld,
-          end: endWorld,
+          id,
+          name: `Road ${neighborhood.roads.length + 1}`,
+          start,
+          end,
           width: 4
         };
-        setNeighborhood(prev => ({ ...prev, roads: [...prev.roads, newRoad] }));
-      } else if (activeTool === "BUILDING") {
-        const width = Math.abs(endWorld.x - startWorld.x);
-        const height = Math.abs(endWorld.y - startWorld.y);
-        if (width > 2 && height > 2) {
-          const newBuilding: Building = {
-            id: `building-${Date.now()}`,
-            name: `Building ${neighborhood.buildings.length + 1}`,
-            position: { x: Math.min(startWorld.x, endWorld.x), y: Math.min(startWorld.y, endWorld.y) },
-            floors: [
-              {
-                id: `floor-${Date.now()}`,
-                level: 0,
-                height: 3,
-                dimensions: { x: width, y: height },
-                rooms: []
-              }
-            ]
-          };
-          setNeighborhood(prev => ({ ...prev, buildings: [...prev.buildings, newBuilding] }));
-          setSelectedBuildingId(newBuilding.id);
-          setSelectedFloorId(newBuilding.floors[0].id);
-        }
-      } else if (activeTool === "TOWER_CAM") {
-        const newCam: TowerCCTV = {
-          id: `tower-cam-${Date.now()}`,
-          name: `Tower Cam ${(neighborhood.towerCctvs?.length || 0) + 1}`,
-          position: endWorld,
-          height: 2,
-          towerHeight: 12,
+        setNeighborhood((prev: Neighborhood) => ({
+          ...prev,
+          roads: [...prev.roads, newRoad]
+        }));
+      } else if (tool === 'tower-cctv') {
+        const newTower: TowerCCTV = {
+          id,
+          name: `Tower ${neighborhood.towerCctvs?.length || 0 + 1}`,
+          position: start,
+          height: 1.5,
+          towerHeight: 10,
           fov: 90,
           yaw: 0,
-          pitch: 45
+          pitch: -45
         };
-        setNeighborhood(prev => ({ ...prev, towerCctvs: [...(prev.towerCctvs || []), newCam] }));
-      }
-    } else if (step === "BUILDING_DETAILS" && selectedBuildingId && selectedFloorId) {
-      const bPos = currentBuilding?.position || {x: 0, y: 0};
-      
-      if (activeInteriorTool === "ROOM") {
-        const width = Math.abs(endWorld.x - startWorld.x);
-        const height = Math.abs(endWorld.y - startWorld.y);
-        const newRoom: Room = {
-          id: `room-${Date.now()}`,
-          name: `Room ${currentFloor?.rooms.length || 0 + 1}`,
-          dimensions: { x: width, y: height },
-          position: { 
-            x: Math.min(startWorld.x, endWorld.x) - bPos.x, 
-            y: Math.min(startWorld.y, endWorld.y) - bPos.y 
-          },
-          furniture: [],
-          sensors: { cctvs: [] }
-        };
-        
-        setNeighborhood(prev => ({
+        setNeighborhood((prev: Neighborhood) => ({
           ...prev,
-          buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
-            ...b,
-            floors: b.floors.map(f => f.id === selectedFloorId ? {
-              ...f,
-              rooms: [...f.rooms, newRoom]
-            } : f)
-          } : b)
+          towerCctvs: [...(prev.towerCctvs || []), newTower]
         }));
-      } else if (activeInteriorTool === "FURNITURE") {
-        // Find which room we are in
-        const room = currentFloor?.rooms.find(r => {
-          const rx = r.position.x + bPos.x;
-          const ry = r.position.y + bPos.y;
-          return endWorld.x >= rx && endWorld.x <= rx + r.dimensions.x &&
-                 endWorld.y >= ry && endWorld.y <= ry + r.dimensions.y;
-        });
-        
-        if (room) {
-          const newFurniture: FurnitureItem = {
-            type: selectedFurnitureType,
-            position: { 
-              x: endWorld.x - bPos.x - room.position.x, 
-              y: endWorld.y - bPos.y - room.position.y 
-            },
-            rotation: 0
-          };
-          
-          setNeighborhood(prev => ({
-            ...prev,
-            buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
-              ...b,
-              floors: b.floors.map(f => f.id === selectedFloorId ? {
-                ...f,
-                rooms: f.rooms.map(r => r.id === room.id ? {
-                  ...r,
-                  furniture: [...r.furniture, newFurniture]
-                } : r)
-              } : f)
-            } : b)
-          }));
-        }
-      } else if (activeInteriorTool === "CCTV") {
-        const room = currentFloor?.rooms.find(r => {
-          const rx = r.position.x + bPos.x;
-          const ry = r.position.y + bPos.y;
-          return endWorld.x >= rx && endWorld.x <= rx + r.dimensions.x &&
-                 endWorld.y >= ry && endWorld.y <= ry + r.dimensions.y;
-        });
-
-        if (room) {
-          const newCam: CCTV = {
-            id: `cam-${Date.now()}`,
-            name: `Cam ${ (room.sensors?.cctvs?.length || 0) + 1}`,
-            fov: 90,
-            position: { 
-              x: endWorld.x - bPos.x - room.position.x, 
-              y: endWorld.y - bPos.y - room.position.y 
-            },
-            height: 2.5,
-            yaw: 0,
-            pitch: 30
-          };
-          
-          setNeighborhood(prev => ({
-            ...prev,
-            buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
-              ...b,
-              floors: b.floors.map(f => f.id === selectedFloorId ? {
-                ...f,
-                rooms: f.rooms.map(r => r.id === room.id ? {
-                  ...r,
-                  sensors: {
-                    ...r.sensors,
-                    cctvs: [...(r.sensors?.cctvs || []), newCam]
-                  }
-                } : r)
-              } : f)
-            } : b)
-          }));
-        }
+        setSelection({ type: 'tower-cctv', id });
       }
+    } else if (step === 2 && selectedBuildingId && selectedFloorId) {
+        const building = neighborhood.buildings.find((b: Building) => b.id === selectedBuildingId);
+        if (!building) return;
+
+        // Relative to building center
+        const relStart = { x: start.x - building.position.x, y: start.y - building.position.y };
+        const relEnd = { x: end.x - building.position.x, y: end.y - building.position.y };
+
+        if (tool === 'room') {
+            const x = Math.min(relStart.x, relEnd.x);
+            const y = Math.min(relStart.y, relEnd.y);
+            const w = Math.abs(relStart.x - relEnd.x);
+            const h = Math.abs(relStart.y - relEnd.y);
+            if (w < 0.5 || h < 0.5) return;
+
+            const newRoom: Room = {
+                id,
+                name: `Room ${building.floors.find((f: Floor) => f.id === selectedFloorId)?.rooms.length || 0 + 1}`,
+                dimensions: { x: w, y: h },
+                position: { x, y },
+                furniture: []
+            };
+
+            setNeighborhood((prev: Neighborhood) => ({
+                ...prev,
+                buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
+                    ...b,
+                    floors: b.floors.map(f => f.id === selectedFloorId ? {
+                        ...f,
+                        rooms: [...f.rooms, newRoom]
+                    } : f)
+                } : b)
+            }));
+            setSelection({ type: 'room', id, parentId: selectedFloorId, grandParentId: selectedBuildingId });
+        } else if (tool === 'cctv') {
+            // Find room under click
+            const floor = building.floors.find((f: Floor) => f.id === selectedFloorId);
+            const room = floor?.rooms.find((r: Room) => 
+                relStart.x >= r.position.x && relStart.x <= r.position.x + r.dimensions.x &&
+                relStart.y >= r.position.y && relStart.y <= r.position.y + r.dimensions.y
+            );
+
+            if (room) {
+                const newCCTV: CCTV = {
+                    id,
+                    name: `CCTV ${room.sensors?.cctvs?.length || 0 + 1}`,
+                    position: { x: relStart.x - room.position.x, y: relStart.y - room.position.y },
+                    height: 2.5,
+                    fov: 90,
+                    yaw: 0,
+                    pitch: -30
+                };
+
+                setNeighborhood((prev: Neighborhood) => ({
+                    ...prev,
+                    buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
+                        ...b,
+                        floors: b.floors.map(f => f.id === selectedFloorId ? {
+                            ...f,
+                            rooms: f.rooms.map(r => r.id === room.id ? {
+                                ...r,
+                                sensors: { ...r.sensors, cctvs: [...(r.sensors?.cctvs || []), newCCTV] }
+                            } : r)
+                        } : f)
+                    } : b)
+                }));
+                setSelection({ type: 'cctv', id, parentId: room.id, grandParentId: selectedFloorId });
+            }
+        } else if (tool === 'furniture') {
+             // Find room under click
+             const floor = building.floors.find((f: Floor) => f.id === selectedFloorId);
+             const room = floor?.rooms.find((r: Room) => 
+                 relStart.x >= r.position.x && relStart.x <= r.position.x + r.dimensions.x &&
+                 relStart.y >= r.position.y && relStart.y <= r.position.y + r.dimensions.y
+             );
+ 
+             if (room) {
+                 const newFurniture: FurnitureItem = {
+                     id,
+                     type: selectedFurnitureType || Furniture.Table,
+                     position: { x: relStart.x - room.position.x, y: relStart.y - room.position.y },
+                     rotation: 0,
+                     scale: 1
+                 };
+
+                 setNeighborhood((prev: Neighborhood) => ({
+                     ...prev,
+                     buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
+                         ...b,
+                         floors: b.floors.map(f => f.id === selectedFloorId ? {
+                             ...f,
+                             rooms: f.rooms.map(r => r.id === room.id ? {
+                                 ...r,
+                                 furniture: [...r.furniture, newFurniture]
+                             } : r)
+                         } : f)
+                     } : b)
+                 }));
+                 setSelection({ type: 'furniture', id, parentId: room.id, grandParentId: selectedFloorId });
+             }
+        }
+    }
+  };
+
+  return (
+    <canvas 
+      ref={canvasRef}
+      className={cn(
+        "w-full h-full",
+        tool === 'hand' ? "cursor-grab active:cursor-grabbing" : 
+        tool === 'move' ? "cursor-move" : 
+        tool === 'select' ? "cursor-default" : "cursor-crosshair"
+      )}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onWheel={handleWheel}
+      onContextMenu={(e) => e.preventDefault()}
+    />
+  )
+}
+
+// --- Drawing Helpers ---
+
+function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, offset: { x: number, y: number }, zoom: number) {
+  const startX = Math.floor(-offset.x / zoom);
+  const endX = Math.ceil((width - offset.x) / zoom);
+  const startY = Math.floor(-offset.y / zoom);
+  const endY = Math.ceil((height - offset.y) / zoom);
+
+  // Sub-grid (every 1 unit)
+  ctx.strokeStyle = '#171717';
+  ctx.lineWidth = 0.5;
+  for (let x = startX; x <= endX; x++) {
+    if (x % 5 === 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(x * zoom + offset.x, 0);
+    ctx.lineTo(x * zoom + offset.x, height);
+    ctx.stroke();
+  }
+  for (let y = startY; y <= endY; y++) {
+    if (y % 5 === 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(0, y * zoom + offset.y);
+    ctx.lineTo(width, y * zoom + offset.y);
+    ctx.stroke();
+  }
+
+  // Main grid (every 5 units)
+  ctx.strokeStyle = '#262626';
+  ctx.lineWidth = 1.5;
+  for (let x = startX; x <= endX; x++) {
+    if (x % 5 !== 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(x * zoom + offset.x, 0);
+    ctx.lineTo(x * zoom + offset.x, height);
+    ctx.stroke();
+    
+    // Axis labels
+    ctx.fillStyle = '#525252';
+    ctx.font = 'bold 9px Arial';
+    ctx.fillText(x.toString(), x * zoom + offset.x + 4, 12);
+  }
+
+  for (let y = startY; y <= endY; y++) {
+    if (y % 5 !== 0) continue;
+    ctx.beginPath();
+    ctx.moveTo(0, y * zoom + offset.y);
+    ctx.lineTo(width, y * zoom + offset.y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#525252';
+    ctx.font = 'bold 9px Arial';
+    ctx.fillText(y.toString(), 4, y * zoom + offset.y - 4);
+  }
+}
+
+function drawBuilding(ctx: CanvasRenderingContext2D, building: Building, toScreen: any, selected: boolean, outlineOnly = false, currentFloor?: Floor) {
+  // Use current floor dimensions or first floor
+  const floor = currentFloor || building.floors[0];
+  const w = floor.dimensions.x;
+  const h = floor.dimensions.y;
+  const pos = toScreen(building.position.x - w/2, building.position.y - h/2);
+
+  if (!outlineOnly) {
+    ctx.fillStyle = selected ? 'rgba(37, 99, 235, 0.4)' : 'rgba(38, 38, 38, 0.6)';
+    ctx.fillRect(pos.x, pos.y, w * (toScreen(1,0).x - toScreen(0,0).x), h * (toScreen(0,1).y - toScreen(0,0).y));
+  }
+  
+  ctx.strokeStyle = selected ? '#3b82f6' : '#525252';
+  ctx.lineWidth = selected ? 2 : 1;
+  ctx.setLineDash(outlineOnly ? [5, 5] : []);
+  ctx.strokeRect(pos.x, pos.y, w * (toScreen(1,0).x - toScreen(0,0).x), h * (toScreen(0,1).y - toScreen(0,0).y));
+  ctx.setLineDash([]);
+
+  if (!outlineOnly) {
+    ctx.fillStyle = '#a3a3a3';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(building.name, pos.x + (w * (toScreen(1,0).x - toScreen(0,0).x)) / 2, pos.y - 5);
+  }
+}
+
+function drawRoad(ctx: CanvasRenderingContext2D, road: Road, toScreen: any) {
+  const start = toScreen(road.start.x, road.start.y);
+  const end = toScreen(road.end.x, road.end.y);
+
+  ctx.strokeStyle = '#404040';
+  ctx.lineWidth = road.width * (toScreen(1,0).x - toScreen(0,0).x);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  // Dashed center line
+  ctx.strokeStyle = '#737373';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([10, 10]);
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawTowerCCTV(ctx: CanvasRenderingContext2D, cctv: TowerCCTV, toScreen: any, selected: boolean) {
+  const pos = toScreen(cctv.position.x, cctv.position.y);
+  
+  // Base
+  ctx.fillStyle = selected ? '#3b82f6' : '#f43f5e';
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // FOV cone
+  const fovRad = (cctv.fov * Math.PI) / 180;
+  const yawRad = ((cctv.yaw || 0) * Math.PI) / 180;
+  
+  ctx.fillStyle = selected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(244, 63, 94, 0.1)';
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  ctx.arc(pos.x, pos.y, 40, yawRad - fovRad/2, yawRad + fovRad/2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawRoom(ctx: CanvasRenderingContext2D, room: Room, bPos: Vec2, toScreen: any, selected: boolean) {
+    const pos = toScreen(bPos.x + room.position.x, bPos.y + room.position.y);
+    const w = room.dimensions.x * (toScreen(1,0).x - toScreen(0,0).x);
+    const h = room.dimensions.y * (toScreen(0,1).y - toScreen(0,0).y);
+
+    ctx.fillStyle = selected ? 'rgba(37, 99, 235, 0.2)' : (room.color || 'rgba(64, 64, 64, 0.3)');
+    ctx.fillRect(pos.x, pos.y, w, h);
+    
+    ctx.strokeStyle = selected ? '#3b82f6' : '#525252';
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeRect(pos.x, pos.y, w, h);
+
+    ctx.fillStyle = '#a3a3a3';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(room.name, pos.x + w/2, pos.y + h/2);
+}
+
+function drawInternalCCTV(ctx: CanvasRenderingContext2D, cctv: CCTV, rPos: Vec2, bPos: Vec2, toScreen: any, selected: boolean) {
+    const pos = toScreen(bPos.x + rPos.x + cctv.position.x, bPos.y + rPos.y + cctv.position.y);
+    
+    ctx.fillStyle = selected ? '#3b82f6' : '#f43f5e';
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    const fovRad = (cctv.fov * Math.PI) / 180;
+    const yawRad = ((cctv.yaw || 0) * Math.PI) / 180;
+    
+    ctx.fillStyle = selected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(244, 63, 94, 0.1)';
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    ctx.arc(pos.x, pos.y, 25, yawRad - fovRad/2, yawRad + fovRad/2);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, rPos: Vec2, bPos: Vec2, toScreen: any, selected: boolean) {
+    const pos = toScreen(bPos.x + rPos.x + item.position.x, bPos.y + rPos.y + item.position.y);
+    const size = 10 * (item.scale || 1);
+
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate((item.rotation || 0) * Math.PI / 180);
+    
+    ctx.fillStyle = selected ? 'rgba(37, 99, 235, 0.5)' : '#404040';
+    ctx.strokeStyle = selected ? '#3b82f6' : '#737373';
+    ctx.lineWidth = selected ? 2 : 1;
+    
+    if (item.type === Furniture.Table) {
+        ctx.strokeRect(-size, -size/2, size*2, size);
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.7, -size/2); ctx.lineTo(-size * 0.7, size/2);
+        ctx.moveTo(size * 0.7, -size/2); ctx.lineTo(size * 0.7, size/2);
+        ctx.stroke();
+    } else if (item.type === Furniture.Bed) {
+        ctx.strokeRect(-size, -size*1.3, size*2, size*2.6);
+        // Pillows
+        ctx.strokeRect(-size * 0.8, -size * 1.2, size * 0.6, size * 0.4);
+        ctx.strokeRect(size * 0.2, -size * 1.2, size * 0.6, size * 0.4);
+        // Blanket line
+        ctx.beginPath();
+        ctx.moveTo(-size, size * 0.2);
+        ctx.lineTo(size, size * 0.2);
+        ctx.stroke();
+    } else if (item.type === Furniture.Sofa) {
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 3, size);
+        // Arms
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 0.3, size);
+        ctx.strokeRect(size * 1.2, -size * 0.5, size * 0.3, size);
+        // Back rest
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 3, size * 0.3);
+    } else if (item.type === Furniture.Chair) {
+        ctx.strokeRect(-size * 0.5, -size * 0.5, size, size);
+        // Back rest
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.5, -size * 0.5);
+        ctx.lineTo(size * 0.5, -size * 0.5);
+        ctx.stroke();
+        // Arms (optional)
+        ctx.strokeRect(-size * 0.5, -size * 0.5, size * 0.15, size);
+        ctx.strokeRect(size * 0.35, -size * 0.5, size * 0.15, size);
+    } else {
+        ctx.strokeRect(-size/2, -size/2, size, size);
+    }
+    
+    ctx.restore();
+}
+
+function drawPreview(ctx: CanvasRenderingContext2D, tool: Tool, start: Vec2, end: Vec2, toScreen: any) {
+  const s = toScreen(start.x, start.y);
+  const e = toScreen(end.x, end.y);
+
+  ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+  ctx.setLineDash([5, 5]);
+
+  if (tool === 'building' || tool === 'room') {
+    ctx.strokeRect(s.x, s.y, e.x - s.x, e.y - s.y);
+  } else if (tool === 'road') {
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(e.x, e.y);
+    ctx.stroke();
+  } else if (tool === 'tower-cctv' || tool === 'cctv') {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (tool === 'furniture') {
+    ctx.strokeRect(s.x - 10, s.y - 10, 20, 20);
+  }
+
+  ctx.setLineDash([]);
+}
+
+// --- Layers & Properties ---
+
+function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
+  const item = findItem(selection, neighborhood);
+  if (!item) return null;
+
+  const updateProp = (key: string, value: any) => {
+    setNeighborhood((prev: Neighborhood) => {
+        // Deep clone or strategic update... for simplicity here:
+        const updated = JSON.parse(JSON.stringify(prev));
+        const target = findItem(selection, updated);
+        if (target) target[key] = value;
+        return updated;
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-2">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Properties</h3>
+        <span className="text-[9px] font-bold text-neutral-500">{selection.type}</span>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <Label className="text-[9px] uppercase text-neutral-500 font-bold">Name</Label>
+          <Input 
+            value={item.name || ''} 
+            onChange={(e) => updateProp('name', e.target.value)}
+            className="h-8 text-xs bg-neutral-950 border-neutral-800"
+          />
+        </div>
+
+        {(selection.type === 'tower-cctv' || selection.type === 'cctv') && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Yaw (deg)</Label>
+                <Input 
+                  type="number"
+                  value={item.yaw || 0} 
+                  onChange={(e) => updateProp('yaw', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.yaw || 0]} 
+                  min={0} 
+                  max={360} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('yaw', val)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Pitch (deg)</Label>
+                <Input 
+                  type="number"
+                  value={item.pitch || 0} 
+                  onChange={(e) => updateProp('pitch', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.pitch || 0]} 
+                  min={-90} 
+                  max={90} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('pitch', val)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">FOV</Label>
+                <Input 
+                  type="number"
+                  value={item.fov || 90} 
+                  onChange={(e) => updateProp('fov', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.fov || 90]} 
+                  min={10} 
+                  max={150} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('fov', val)}
+                />
+              </div>
+          </>
+        )}
+
+        {selection.type === 'furniture' && (
+          <div className="space-y-3">
+            <div className="space-y-1">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Type</Label>
+                <select 
+                    value={item.type}
+                    onChange={(e) => updateProp('type', e.target.value)}
+                    className="w-full h-8 text-xs bg-neutral-950 border border-neutral-800 rounded px-2"
+                >
+                    {Object.values(Furniture).map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+            </div>
+            <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Rotation (deg)</Label>
+                <Input 
+                  type="number"
+                  value={item.rotation || 0} 
+                  onChange={(e) => updateProp('rotation', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.rotation || 0]} 
+                  min={0} 
+                  max={360} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('rotation', val)}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Scale</Label>
+                <Input 
+                  type="number"
+                  value={item.scale || 1} 
+                  onChange={(e) => updateProp('scale', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.scale || 1]} 
+                  min={0.1} 
+                  max={5} 
+                  step={0.1} 
+                  onValueChange={([val]) => updateProp('scale', val)}
+                />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LayersList({ 
+    step, 
+    neighborhood, 
+    setNeighborhood, 
+    selection, 
+    setSelection,
+    selectedBuildingId,
+    setSelectedBuildingId,
+    selectedFloorId,
+    setSelectedFloorId
+}: any) {
+    const handleDelete = (type: string, id: string, pId?: string, gpId?: string) => {
+        setNeighborhood((prev: Neighborhood) => {
+            const updated = JSON.parse(JSON.stringify(prev));
+            if (type === 'building') {
+                updated.buildings = updated.buildings.filter((b: Building) => b.id !== id);
+                if (selectedBuildingId === id) setSelectedBuildingId(null);
+            } else if (type === 'road') {
+                updated.roads = updated.roads.filter((r: Road) => r.id !== id);
+            } else if (type === 'tower-cctv') {
+                updated.towerCctvs = updated.towerCctvs.filter((t: TowerCCTV) => t.id !== id);
+            } else if (type === 'room') {
+                const b = updated.buildings.find((b: Building) => b.id === gpId);
+                const f = b.floors.find((f: Floor) => f.id === pId);
+                f.rooms = f.rooms.filter((r: Room) => r.id !== id);
+            } else if (type === 'cctv') {
+                const b = updated.buildings.find((b: Building) => b.id === gpId); // gpId is floorId for cctv
+                const f = b.floors.find((f: Floor) => f.id === gpId);
+                const r = f.rooms.find((r: Room) => r.id === pId);
+                r.sensors.cctvs = r.sensors.cctvs.filter((c: CCTV) => c.id !== id);
+            } else if (type === 'furniture') {
+                const b = updated.buildings.find((b: Building) => b.id === selectedBuildingId);
+                const f = b.floors.find((f: Floor) => f.id === gpId);
+                const r = f.rooms.find((r: Room) => r.id === pId);
+                r.furniture = r.furniture.filter((fur: FurnitureItem) => fur.id !== id);
+            }
+            return updated;
+        });
+        setSelection(null);
+    };
+
+    if (step === 1) {
+        return (
+            <div className="space-y-1">
+                {neighborhood.buildings.map((b: Building) => (
+                    <LayerItem 
+                        key={b.id} 
+                        name={b.name} 
+                        active={selection?.id === b.id} 
+                        onClick={() => setSelection({ type: 'building', id: b.id })}
+                        onDetail={() => { setSelectedBuildingId(b.id); setSelectedFloorId(b.floors[0].id); }}
+                        onDelete={() => handleDelete('building', b.id)}
+                    />
+                ))}
+                {neighborhood.roads.map((r: Road) => (
+                    <LayerItem 
+                        key={r.id} 
+                        name={r.name || 'Unnamed Road'} 
+                        active={selection?.id === r.id} 
+                        onClick={() => setSelection({ type: 'road', id: r.id })}
+                        onDelete={() => handleDelete('road', r.id)}
+                    />
+                ))}
+                {neighborhood.towerCctvs?.map((t: TowerCCTV) => (
+                    <LayerItem 
+                        key={t.id} 
+                        name={t.name || 'Tower CCTV'} 
+                        active={selection?.id === t.id} 
+                        onClick={() => setSelection({ type: 'tower-cctv', id: t.id })}
+                        onDelete={() => handleDelete('tower-cctv', t.id)}
+                    />
+                ))}
+            </div>
+        );
     }
 
-    setIsDrawing(false);
-    setDrawStart(null);
-    setCurrentMousePos(null);
-  };
-
-  const handleNext = () => {
-    if (step === "NEIGHBORHOOD") setStep("BUILDING_DETAILS");
-    else if (step === "BUILDING_DETAILS") setStep("FINALIZE");
-  };
-
-  const handleBack = () => {
-    if (step === "BUILDING_DETAILS") setStep("NEIGHBORHOOD");
-    else if (step === "FINALIZE") setStep("BUILDING_DETAILS");
-  };
-
-  const deleteBuilding = (id: string) => {
-    setNeighborhood(prev => ({
-      ...prev,
-      buildings: prev.buildings.filter(b => b.id !== id)
-    }));
-    if (selectedBuildingId === id) setSelectedBuildingId(null);
-  };
-
-  const deleteRoad = (id: string) => {
-    setNeighborhood(prev => ({
-      ...prev,
-      roads: prev.roads.filter(r => r.id !== id)
-    }));
-  };
-
-  const deleteCam = (id: string) => {
-    setNeighborhood(prev => ({
-      ...prev,
-      towerCctvs: prev.towerCctvs?.filter(c => c.id !== id)
-    }));
-  };
-
-  return (
-    <div className="flex h-screen bg-[#050505] text-white overflow-hidden font-sans">
-      {/* Left Sidebar - Controls */}
-      <div className="w-80 border-r border-white/10 bg-black flex flex-col z-20 shadow-2xl">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3 mb-6">
-            <Link href="/dashboard" className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <h1 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Wizard</h1>
-              <p className="text-lg font-black tracking-tight uppercase tracking-tighter">New Site Plan</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-2">
-            <div className={cn("h-1 flex-1 rounded-full transition-all duration-500", step === "NEIGHBORHOOD" ? "bg-primary shadow-[0_0_10px_rgba(0,210,255,0.5)]" : "bg-white/10")} />
-            <div className={cn("h-1 flex-1 rounded-full transition-all duration-500", step === "BUILDING_DETAILS" ? "bg-primary shadow-[0_0_10px_rgba(0,210,255,0.5)]" : "bg-white/10")} />
-            <div className={cn("h-1 flex-1 rounded-full transition-all duration-500", step === "FINALIZE" ? "bg-primary shadow-[0_0_10px_rgba(0,210,255,0.5)]" : "bg-white/10")} />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {step === "NEIGHBORHOOD" && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-              {selectedCamera && (
-                <section className="p-4 bg-red-500/10 rounded-2xl border border-red-500/20 space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400 flex items-center gap-2">
-                      <Camera className="w-3 h-3" /> Camera Settings
-                    </h3>
-                    <button onClick={() => setActiveCameraId(null)} className="text-red-400/40 hover:text-red-400">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-white/40">
-                        <span>Yaw</span>
-                        <span className="text-red-400">{selectedCamera.yaw}°</span>
-                      </div>
-                      <input 
-                        type="range" min="0" max="360" 
-                        value={selectedCamera.yaw || 0}
-                        onChange={(e) => updateCamera(activeCameraId!, { yaw: parseInt(e.target.value) })}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-500"
-                      />
+    if (step === 2 && selectedBuildingId) {
+        const building = neighborhood.buildings.find((b: Building) => b.id === selectedBuildingId);
+        const floor = building?.floors.find((f: Floor) => f.id === selectedFloorId);
+        
+        return (
+            <div className="space-y-4">
+                <div className="px-3 py-2 bg-blue-600/10 border border-blue-500/20 rounded-xl mx-2 mt-1 flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                    <div className="min-w-0">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-blue-500/70 leading-none mb-1">Building</div>
+                        <div className="text-xs font-bold text-white truncate">{building?.name}</div>
                     </div>
-                    
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-white/40">
-                        <span>Pitch</span>
-                        <span className="text-red-400">{selectedCamera.pitch}°</span>
-                      </div>
-                      <input 
-                        type="range" min="0" max="90" 
-                        value={selectedCamera.pitch || 0}
-                        onChange={(e) => updateCamera(activeCameraId!, { pitch: parseInt(e.target.value) })}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-500"
-                      />
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section>
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4">Drawing Tools</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <ToolButton 
-                    active={activeTool === "ROAD"} 
-                    onClick={() => setActiveTool("ROAD")} 
-                    icon={<Activity className="w-4 h-4" />} 
-                    label="Road" 
-                  />
-                  <ToolButton 
-                    active={activeTool === "BUILDING"} 
-                    onClick={() => setActiveTool("BUILDING")} 
-                    icon={<Home className="w-4 h-4" />} 
-                    label="Building" 
-                  />
-                  <ToolButton 
-                    active={activeTool === "TOWER_CAM"} 
-                    onClick={() => setActiveTool("TOWER_CAM")} 
-                    icon={<Camera className="w-4 h-4" />} 
-                    label="Tower Cam" 
-                  />
                 </div>
-              </section>
 
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Layers</h3>
-                  <Badge variant="outline" className="text-[9px] bg-white/5 border-white/10 text-white/40">{neighborhood.buildings.length + neighborhood.roads.length + (neighborhood.towerCctvs?.length || 0)} Total</Badge>
-                </div>
                 <div className="space-y-1">
-                  {neighborhood.buildings.length === 0 && neighborhood.roads.length === 0 && neighborhood.towerCctvs?.length === 0 && (
-                    <div className="py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                      <p className="text-[10px] text-white/20 uppercase tracking-widest">Canvas is empty</p>
-                    </div>
-                  )}
-                  {neighborhood.buildings.map(b => (
-                    <div key={b.id} className={cn("group flex flex-col p-3 rounded-xl border transition-all", selectedBuildingId === b.id ? "bg-primary/10 border-primary/40" : "bg-white/5 border-white/5 hover:border-white/10")}>
-                      <div className="flex items-center justify-between">
-                        <button 
-                          onClick={() => setSelectedBuildingId(b.id)}
-                          className="flex items-center gap-3 flex-1 text-left"
+                    <span className="text-[9px] uppercase text-neutral-600 font-bold px-2">Floors</span>
+                    {building?.floors.map((f: Floor) => (
+                        <div 
+                            key={f.id} 
+                            onClick={() => setSelectedFloorId(f.id)}
+                            className={cn(
+                                "flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors",
+                                selectedFloorId === f.id ? "bg-blue-600/20 text-blue-400" : "hover:bg-neutral-800 text-neutral-400"
+                            )}
                         >
-                          <Home className={cn("w-4 h-4", selectedBuildingId === b.id ? "text-primary" : "text-white/20")} />
-                          <span className={cn("text-[10px] font-black uppercase tracking-widest", selectedBuildingId === b.id ? "text-white" : "text-white/40")}>{b.name}</span>
-                        </button>
-                        <button 
-                          onClick={() => deleteBuilding(b.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-white/40 hover:text-red-400 transition-all"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      {selectedBuildingId === b.id && (
-                        <div className="mt-3 pt-3 border-t border-primary/20">
-                          <Input 
-                            value={b.name} 
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              const newName = e.target.value;
-                              setNeighborhood(prev => ({
-                                ...prev,
-                                buildings: prev.buildings.map(build => build.id === b.id ? { ...build, name: newName } : build)
-                              }));
-                            }}
-                            className="h-7 text-[10px] bg-black/40 border-white/10 focus:border-primary text-white"
-                          />
+                            <span className="text-[10px] font-bold">Floor {f.level}</span>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                  {neighborhood.roads.map(r => (
-                    <div key={r.id} className={cn("group flex flex-col p-3 rounded-xl border transition-all", selectedBuildingId === null && activeCameraId === null ? "bg-white/5 border-white/5 hover:border-white/10" : "bg-white/5 border-white/5 hover:border-white/10")}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 flex-1">
-                          <Activity className="w-4 h-4 text-white/20" />
-                          <Input 
-                            value={r.name || `Road ${r.id.split('-')[1].slice(-4)}`}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              const newName = e.target.value;
-                              setNeighborhood(prev => ({
-                                ...prev,
-                                roads: prev.roads.map(road => road.id === r.id ? { ...road, name: newName } : road)
-                              }));
-                            }}
-                            className="h-6 flex-1 text-[10px] bg-transparent border-none focus:ring-0 p-0 font-black uppercase tracking-widest text-white/40 hover:text-white transition-colors"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => deleteRoad(r.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-white/40 hover:text-red-400 transition-all"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {neighborhood.towerCctvs?.map(c => (
-                    <div key={c.id} className={cn("group flex flex-col p-3 rounded-xl border transition-all", activeCameraId === c.id ? "bg-red-500/10 border-red-500/40" : "bg-white/5 border-white/5 hover:border-white/10")}>
-                      <div className="flex items-center justify-between">
-                        <button 
-                          onClick={() => {
-                            setActiveCameraId(c.id);
-                            setSelectedBuildingId(null);
-                          }}
-                          className="flex items-center gap-3 flex-1 text-left"
-                        >
-                          <Camera className={cn("w-4 h-4", activeCameraId === c.id ? "text-red-500" : "text-white/20")} />
-                          <span className={cn("text-[10px] font-black uppercase tracking-widest", activeCameraId === c.id ? "text-white" : "text-white/40")}>{c.name}</span>
-                        </button>
-                        <button 
-                          onClick={() => deleteCam(c.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-white/40 hover:text-red-400 transition-all"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      {activeCameraId === c.id && (
-                        <div className="mt-3 pt-3 border-t border-red-500/20">
-                          <Input 
-                            value={c.name} 
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              const newName = e.target.value;
-                              setNeighborhood(prev => ({
-                                ...prev,
-                                towerCctvs: prev.towerCctvs?.map(cam => cam.id === c.id ? { ...cam, name: newName } : cam)
-                              }));
-                            }}
-                            className="h-7 text-[10px] bg-black/40 border-white/10 focus:border-red-500 text-white"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {step === "BUILDING_DETAILS" && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-               {selectedCamera && (
-                <section className="p-4 bg-red-500/10 rounded-2xl border border-red-500/20 space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400 flex items-center gap-2">
-                      <Camera className="w-3 h-3" /> Camera Settings
-                    </h3>
-                    <button onClick={() => setActiveCameraId(null)} className="text-red-400/40 hover:text-red-400">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-white/40">
-                        <span>Yaw</span>
-                        <span className="text-red-400">{selectedCamera.yaw}°</span>
-                      </div>
-                      <input 
-                        type="range" min="0" max="360" 
-                        value={selectedCamera.yaw || 0}
-                        onChange={(e) => updateCamera(activeCameraId!, { yaw: parseInt(e.target.value) })}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-500"
-                      />
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-white/40">
-                        <span>Pitch</span>
-                        <span className="text-red-400">{selectedCamera.pitch}°</span>
-                      </div>
-                      <input 
-                        type="range" min="0" max="90" 
-                        value={selectedCamera.pitch || 0}
-                        onChange={(e) => updateCamera(activeCameraId!, { pitch: parseInt(e.target.value) })}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-500"
-                      />
-                    </div>
-                  </div>
-                </section>
-              )}
-
-               <section>
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4">Select Building</h3>
-                <div className="space-y-2">
-                  {neighborhood.buildings.map(b => (
-                    <button 
-                      key={b.id}
-                      onClick={() => {
-                        setSelectedBuildingId(b.id);
-                        setSelectedFloorId(b.floors[0]?.id || null);
-                      }}
-                      className={cn(
-                        "w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between",
-                        selectedBuildingId === b.id ? "bg-primary/20 border-primary shadow-[0_0_15px_rgba(0,210,255,0.1)]" : "bg-white/5 border-white/5 text-white/60 hover:border-white/10"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Home className={cn("w-4 h-4", selectedBuildingId === b.id ? "text-primary" : "text-white/20")} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">{b.name}</span>
-                      </div>
-                      {selectedBuildingId === b.id && <Check className="w-4 h-4 text-primary" />}
-                    </button>
-                  ))}
-                  {neighborhood.buildings.length === 0 && (
-                    <p className="text-[10px] text-white/20 uppercase tracking-widest italic">No buildings available. Go back to draw.</p>
-                  )}
-                </div>
-              </section>
-
-              {currentBuilding && (
-                <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Floors</h3>
-                    <button 
-                      onClick={() => {
-                        const newLevel = currentBuilding.floors.length;
-                        const newFloor: Floor = {
-                          id: `floor-${Date.now()}`,
-                          level: newLevel,
-                          height: 3,
-                          dimensions: currentBuilding.floors[0].dimensions,
-                          rooms: []
-                        };
-                        setNeighborhood(prev => ({
-                          ...prev,
-                          buildings: prev.buildings.map(b => b.id === selectedBuildingId ? { ...b, floors: [...b.floors, newFloor] } : b)
-                        }));
-                        setSelectedFloorId(newFloor.id);
-                      }}
-                      className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
-                    >
-                      + Add Floor
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {currentBuilding.floors.map(f => (
-                      <button 
-                        key={f.id}
-                        onClick={() => setSelectedFloorId(f.id)}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all",
-                          selectedFloorId === f.id ? "bg-primary border-primary text-white shadow-[0_0_10px_rgba(0,210,255,0.3)]" : "bg-white/5 border-white/5 text-white/40"
-                        )}
-                      >
-                        Level {f.level}
-                      </button>
                     ))}
-                  </div>
-
-                  <div className="pt-6 border-t border-white/5 space-y-4">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Interior Elements</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <ToolButton 
-                        active={activeInteriorTool === "ROOM"} 
-                        onClick={() => setActiveInteriorTool("ROOM")} 
-                        icon={<Square className="w-4 h-4" />} 
-                        label="Room" 
-                      />
-                      <ToolButton 
-                        active={activeInteriorTool === "FURNITURE"} 
-                        onClick={() => setActiveInteriorTool("FURNITURE")} 
-                        icon={<Box className="w-4 h-4" />} 
-                        label="Furniture" 
-                      />
-                      <ToolButton 
-                        active={activeInteriorTool === "CCTV"} 
-                        onClick={() => setActiveInteriorTool("CCTV")} 
-                        icon={<Camera className="w-4 h-4" />} 
-                        label="CCTV" 
-                      />
-                    </div>
-                    
-                    {activeInteriorTool === "FURNITURE" && (
-                      <div className="p-3 bg-white/5 rounded-xl space-y-3 animate-in fade-in zoom-in-95 duration-200">
-                         <h4 className="text-[9px] font-black uppercase tracking-widest text-white/40">Select Type</h4>
-                         <div className="grid grid-cols-2 gap-1">
-                            {Object.values(Furniture).map(f => (
-                              <button 
-                                key={f}
-                                onClick={() => setSelectedFurnitureType(f)}
-                                className={cn(
-                                  "px-2 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all",
-                                  selectedFurnitureType === f ? "bg-primary border-primary text-white" : "bg-black/20 border-white/5 text-white/40 hover:border-white/10"
-                                )}
-                              >
-                                {f}
-                              </button>
-                            ))}
-                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-6 border-t border-white/5">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4">Floor Summary</h3>
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                       {currentFloor?.rooms.map(room => (
-                         <div key={room.id} className="space-y-1">
-                           <div className="p-3 bg-white/5 rounded-xl space-y-2 group border border-transparent hover:border-white/5 transition-all">
-                              <div className="flex items-center justify-between">
-                                <Input 
-                                  value={room.name} 
-                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                    const newName = e.target.value;
-                                    setNeighborhood(prev => ({
-                                      ...prev,
-                                      buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
-                                        ...b,
-                                        floors: b.floors.map(f => f.id === selectedFloorId ? {
-                                          ...f,
-                                          rooms: f.rooms.map(r => r.id === room.id ? { ...r, name: newName } : r)
-                                        } : f)
-                                      } : b)
-                                    }));
-                                  }}
-                                  className="h-6 w-32 text-[10px] bg-transparent border-none focus:ring-0 p-0 font-bold text-white/60 hover:text-white"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="text-[8px] h-4 bg-white/5 text-white/30 border-none">{room.furniture.length} F</Badge>
-                                  <Badge variant="outline" className="text-[8px] h-4 bg-red-500/10 text-red-400/60 border-none">{room.sensors?.cctvs?.length || 0} C</Badge>
-                                  <button 
-                                    onClick={() => {
-                                      setNeighborhood(prev => ({
-                                        ...prev,
-                                        buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
-                                          ...b,
-                                          floors: b.floors.map(f => f.id === selectedFloorId ? {
-                                            ...f,
-                                            rooms: f.rooms.filter(r => r.id !== room.id)
-                                          } : f)
-                                        } : b)
-                                      }));
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 p-1 text-white/20 hover:text-red-400 transition-all"
-                                  >
-                                     <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                           </div>
-                           {/* Indoor Camera List for this room */}
-                           <div className="pl-4 space-y-1">
-                             {room.sensors?.cctvs?.map(cam => (
-                               <button 
-                                 key={cam.id}
-                                 onClick={() => setActiveCameraId(cam.id)}
-                                 className={cn(
-                                   "w-full flex items-center justify-between p-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                                   activeCameraId === cam.id ? "bg-red-500/20 text-white border border-red-500/30" : "bg-white/5 text-white/30 hover:bg-white/10"
-                                 )}
-                               >
-                                 <div className="flex items-center gap-2">
-                                   <Camera className={cn("w-3 h-3", activeCameraId === cam.id ? "text-red-500" : "text-white/20")} />
-                                   <span>{cam.name}</span>
-                                 </div>
-                                 {activeCameraId === cam.id && <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
-                               </button>
-                             ))}
-                           </div>
-                         </div>
-                       ))}
-                       {(!currentFloor?.rooms || currentFloor.rooms.length === 0) && (
-                         <p className="text-[9px] text-white/10 italic text-center py-4">No rooms defined for this floor</p>
-                       )}
-                    </div>
-                  </div>
-                </section>
-              )}
-            </div>
-          )}
-
-          {step === "FINALIZE" && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-              <section className="space-y-4">
-                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Plan Name</Label>
-                <Input 
-                  value={neighborhood.name} 
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNeighborhood({...neighborhood, name: e.target.value})}
-                  className="bg-white/5 border-white/10 focus:border-primary text-white font-black uppercase tracking-widest h-12 rounded-xl"
-                  placeholder="ENTER SITE NAME..."
-                />
-              </section>
-              
-              <div className="grid grid-cols-2 gap-2">
-                <SummaryCard label="Buildings" value={neighborhood.buildings.length} icon={<Home className="w-4 h-4" />} />
-                <SummaryCard label="Roads" value={neighborhood.roads.length} icon={<Activity className="w-4 h-4" />} />
-                <SummaryCard label="Cameras" value={(neighborhood.towerCctvs?.length || 0)} icon={<Camera className="w-4 h-4" />} />
-                <SummaryCard label="Floors" value={neighborhood.buildings.reduce((acc, b) => acc + b.floors.length, 0)} icon={<Layers className="w-4 h-4" />} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 border-t border-white/10 bg-black/50 space-y-3">
-          {step !== "FINALIZE" ? (
-            <Button 
-              onClick={handleNext} 
-              variant="default" 
-              className="w-full py-7 text-[12px] font-black uppercase tracking-[0.2em] rounded-2xl"
-              disabled={step === "NEIGHBORHOOD" && neighborhood.buildings.length === 0}
-            >
-              Continue <ChevronRight className="ml-2 w-4 h-4" />
-            </Button>
-          ) : (
-            <Button variant="default" className="w-full py-7 text-[12px] font-black uppercase tracking-[0.2em] rounded-2xl">
-              <Save className="mr-2 w-4 h-4" /> Finalize Site
-            </Button>
-          )}
-          {step !== "NEIGHBORHOOD" && (
-            <button onClick={handleBack} className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-white/30 hover:text-white transition-colors">
-              Return to Previous
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Main Viewport */}
-      <div className="flex-1 relative flex flex-col">
-        {/* Top Floating Controls */}
-        <div className="absolute top-6 left-6 right-6 flex justify-between items-start z-10 pointer-events-none">
-          <div className="flex gap-4 pointer-events-auto">
-            <div className="px-5 py-2.5 bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex items-center gap-3 shadow-2xl">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(0,210,255,0.8)]" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/80">Interactive Blueprint</span>
-            </div>
-          </div>
-          
-          <div className="px-2 py-2 bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10 flex items-center gap-1 pointer-events-auto shadow-2xl">
-             <button className="px-4 py-2 flex items-center gap-2 text-primary">
-                <Eye className="w-4 h-4" />
-                <span className="text-[10px] font-black uppercase tracking-widest">3D Preview Active</span>
-             </button>
-          </div>
-        </div>
-
-        {/* The Viewport Content */}
-        <div className="flex-1 flex flex-row overflow-hidden bg-[#050505]">
-           {/* 2D Canvas Area - The Blueprint */}
-           <div className="flex-[2] bg-[#0a0a0a] relative overflow-hidden group border-r border-white/10 shadow-2xl">
-              <div className="absolute top-4 left-4 z-20 px-3 py-1.5 bg-blue-500/10 backdrop-blur-xl rounded-xl border border-blue-500/20 shadow-2xl pointer-events-none">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">Interactive Blueprint (2D)</span>
+                    <button 
+                        onClick={() => {
+                            const newLevel = building!.floors.length;
+                            const newFloor: Floor = {
+                                id: Math.random().toString(36).substr(2, 9),
+                                level: newLevel,
+                                height: 4,
+                                dimensions: building!.floors[0].dimensions,
+                                rooms: []
+                            };
+                            setNeighborhood((prev: Neighborhood) => ({
+                                ...prev,
+                                buildings: prev.buildings.map(b => b.id === selectedBuildingId ? {
+                                    ...b,
+                                    floors: [...b.floors, newFloor]
+                                } : b)
+                            }));
+                        }}
+                        className="w-full p-2 border border-dashed border-neutral-800 rounded-lg text-neutral-600 hover:text-neutral-400 hover:border-neutral-600 flex items-center justify-center gap-2 transition-all"
+                    >
+                        <Plus className="w-3 h-3" />
+                        <span className="text-[9px] font-bold uppercase">Add Floor</span>
+                    </button>
                 </div>
-              </div>
 
-              <canvas 
-                ref={canvasRef}
-                onMouseDown={onMouseDown}
-                onMouseMove={onMouseMove}
-                onMouseUp={onMouseUp}
-                className="absolute inset-0 w-full h-full cursor-crosshair z-10" 
-              />
-              
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 pointer-events-none transition-all opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 z-20">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/60">
-                  {activeTool === "SELECT" ? "Click to select objects" : `Drag on grid to create ${activeTool.toLowerCase()}`}
-                </p>
-              </div>
-           </div>
-
-           {/* 3D Preview Panel - The Projection */}
-           <div className="flex-1 min-w-[350px] bg-[#080808] relative group flex flex-col shadow-2xl overflow-hidden border-l border-white/5">
-              <SceneSettingsProvider neighborhood={neighborhood}>
-                <div className="flex-1 relative">
-                  <Scene3D />
+                <div className="space-y-1">
+                    <span className="text-[9px] uppercase text-neutral-600 font-bold px-2">Inside Floor</span>
+                    {floor?.rooms.map((r: Room) => (
+                        <LayerItem 
+                            key={r.id} 
+                            name={r.name} 
+                            active={selection?.id === r.id} 
+                            onClick={() => setSelection({ type: 'room', id: r.id, parentId: selectedFloorId, grandParentId: selectedBuildingId })}
+                            onDelete={() => handleDelete('room', r.id, selectedFloorId, selectedBuildingId)}
+                        />
+                    ))}
+                    {floor?.rooms.flatMap((r: Room) => r.sensors?.cctvs?.map((c: CCTV) => (
+                        <LayerItem 
+                            key={c.id} 
+                            name={c.name} 
+                            active={selection?.id === c.id} 
+                            icon={<Camera className="w-3 h-3" />}
+                            onClick={() => setSelection({ type: 'cctv', id: c.id, parentId: r.id, grandParentId: selectedFloorId })}
+                            onDelete={() => handleDelete('cctv', c.id, r.id, selectedFloorId)}
+                        />
+                    )) || [])}
+                    {floor?.rooms.flatMap((r: Room) => r.furniture.map((f: FurnitureItem) => (
+                        <LayerItem 
+                            key={f.id} 
+                            name={`${f.type}`} 
+                            active={selection?.id === f.id} 
+                            icon={f.type === Furniture.Sofa ? <Sofa className="w-3 h-3" /> : 
+                                  f.type === Furniture.Bed ? <Bed className="w-3 h-3" /> :
+                                  f.type === Furniture.Table ? <TableIcon className="w-3 h-3" /> :
+                                  <Armchair className="w-3 h-3" />}
+                            onClick={() => setSelection({ type: 'furniture', id: f.id, parentId: r.id, grandParentId: selectedFloorId })}
+                            onDelete={() => handleDelete('furniture', f.id, r.id, selectedFloorId)}
+                        />
+                    )))}
                 </div>
-              </SceneSettingsProvider>
-           </div>
+            </div>
+        );
+    }
+
+    return null;
+}
+
+function LayerItem({ name, active, onClick, onDetail, onDelete, icon }: any) {
+    return (
+        <div 
+            onClick={onClick}
+            className={cn(
+                "group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all",
+                active ? "bg-blue-600 text-white shadow-lg" : "hover:bg-neutral-800 text-neutral-400"
+            )}
+        >
+            <div className="flex items-center gap-2">
+                {icon || <Layout className="w-3 h-3" />}
+                <span className="text-[10px] font-bold truncate max-w-[120px]">{name}</span>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onDetail && (
+                    <button onClick={(e) => { e.stopPropagation(); onDetail(); }} className="p-1 hover:bg-white/20 rounded">
+                        <Maximize2 className="w-3 h-3" />
+                    </button>
+                )}
+                <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1 hover:bg-red-500/20 text-red-400 rounded">
+                    <Trash2 className="w-3 h-3" />
+                </button>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }
 
-function ToolButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={cn(
-        "flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border transition-all active:scale-95",
-        active 
-          ? "bg-primary/15 border-primary text-primary shadow-[inset_0_0_20px_rgba(0,210,255,0.05)]" 
-          : "bg-white/5 border-white/5 text-white/30 hover:border-white/10 hover:text-white"
-      )}
-    >
-      <div className={cn("transition-transform duration-300", active && "scale-110")}>{icon}</div>
-      <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
-    </button>
-  );
+// --- Logic Helpers ---
+
+function findItem(selection: Selection, neighborhood: Neighborhood): any {
+    if (selection.type === 'building') return neighborhood.buildings.find(b => b.id === selection.id);
+    if (selection.type === 'road') return neighborhood.roads.find(r => r.id === selection.id);
+    if (selection.type === 'tower-cctv') return neighborhood.towerCctvs?.find(t => t.id === selection.id);
+    
+    if (selection.type === 'room') {
+        const b = neighborhood.buildings.find(b => b.id === selection.grandParentId);
+        const f = b?.floors.find(f => f.id === selection.parentId);
+        return f?.rooms.find(r => r.id === selection.id);
+    }
+    
+    if (selection.type === 'cctv') {
+        // Here parentId is roomId, grandParentId is floorId
+        // This is getting complicated with current structure, need a better find logic
+        for (const b of neighborhood.buildings) {
+            for (const f of b.floors) {
+                for (const r of f.rooms) {
+                    const c = r.sensors?.cctvs?.find(c => c.id === selection.id);
+                    if (c) return c;
+                }
+            }
+        }
+    }
+
+    if (selection.type === 'furniture') {
+        for (const b of neighborhood.buildings) {
+            for (const f of b.floors) {
+                for (const r of f.rooms) {
+                    const fur = r.furniture.find(fur => fur.id === selection.id);
+                    if (fur) return fur;
+                }
+            }
+        }
+    }
+
+    return null;
 }
 
-function SummaryCard({ label, value, icon }: { label: string, value: string | number, icon: React.ReactNode }) {
-  return (
-    <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-white/30">
-        {icon}
-        <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
-      </div>
-      <p className="text-2xl font-black tracking-tighter text-white">{value}</p>
-    </div>
-  );
-}
+function findHitObject(pos: Vec2, step: number, neighborhood: Neighborhood, buildingId: string | null, floorId: string | null): Selection | null {
+    if (step === 1) {
+        // Check Tower CCTVs (circles)
+        for (const t of neighborhood.towerCctvs || []) {
+            const dist = Math.sqrt(Math.pow(pos.x - t.position.x, 2) + Math.pow(pos.y - t.position.y, 2));
+            if (dist < 0.5) return { type: 'tower-cctv', id: t.id };
+        }
 
+        // Check Buildings (rects)
+        for (const b of neighborhood.buildings) {
+            const w = b.floors[0].dimensions.x;
+            const h = b.floors[0].dimensions.y;
+            if (pos.x >= b.position.x - w/2 && pos.x <= b.position.x + w/2 &&
+                pos.y >= b.position.y - h/2 && pos.y <= b.position.y + h/2) {
+                return { type: 'building', id: b.id };
+            }
+        }
+
+        // Check Roads (lines)
+        for (const r of neighborhood.roads) {
+            // Distance from point to line segment
+            const L2 = Math.pow(r.end.x - r.start.x, 2) + Math.pow(r.end.y - r.start.y, 2);
+            if (L2 === 0) continue;
+            let t = ((pos.x - r.start.x) * (r.end.x - r.start.x) + (pos.y - r.start.y) * (r.end.y - r.start.y)) / L2;
+            t = Math.max(0, Math.min(1, t));
+            const projX = r.start.x + t * (r.end.x - r.start.x);
+            const projY = r.start.y + t * (r.end.y - r.start.y);
+            const dist = Math.sqrt(Math.pow(pos.x - projX, 2) + Math.pow(pos.y - projY, 2));
+            if (dist < (r.width || 4) / 2) return { type: 'road', id: r.id };
+        }
+    } else if (step === 2 && buildingId && floorId) {
+        const building = neighborhood.buildings.find(b => b.id === buildingId);
+        const floor = building?.floors.find(f => f.id === floorId);
+        if (!building || !floor) return null;
+
+        const relPos = { x: pos.x - building.position.x, y: pos.y - building.position.y };
+
+        // Check Furniture
+        for (const r of floor.rooms) {
+            for (const f of r.furniture) {
+                const fPos = { x: r.position.x + f.position.x, y: r.position.y + f.position.y };
+                const dist = Math.sqrt(Math.pow(relPos.x - fPos.x, 2) + Math.pow(relPos.y - fPos.y, 2));
+                if (dist < 0.3) return { type: 'furniture', id: f.id, parentId: r.id, grandParentId: floorId };
+            }
+        }
+
+        // Check CCTVs
+        for (const r of floor.rooms) {
+            for (const c of r.sensors?.cctvs || []) {
+                const cPos = { x: r.position.x + c.position.x, y: r.position.y + c.position.y };
+                const dist = Math.sqrt(Math.pow(relPos.x - cPos.x, 2) + Math.pow(relPos.y - cPos.y, 2));
+                if (dist < 0.2) return { type: 'cctv', id: c.id, parentId: r.id, grandParentId: floorId };
+            }
+        }
+
+        // Check Rooms
+        for (const r of floor.rooms) {
+            if (relPos.x >= r.position.x && relPos.x <= r.position.x + r.dimensions.x &&
+                relPos.y >= r.position.y && relPos.y <= r.position.y + r.dimensions.y) {
+                return { type: 'room', id: r.id, parentId: floorId, grandParentId: buildingId };
+            }
+        }
+    }
+
+    return null;
+}
 

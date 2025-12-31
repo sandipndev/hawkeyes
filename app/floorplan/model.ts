@@ -12,6 +12,7 @@ export enum Furniture {
 }
 
 export type FurnitureItem = {
+  id: string;
   type: Furniture;
   position: Vec2;
   rotation?: number; // degrees
