@@ -193,7 +193,10 @@ export default async function DashboardPage() {
                   <div key={camera.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col group hover:border-blue-500/30 transition-all shadow-xl shadow-black/20">
                     {/* Video Stream Container */}
                     <div className="aspect-video bg-neutral-950 relative overflow-hidden">
-                      <CameraStream rtspUrl={camera.rtspFeed} />
+                      <CameraStream 
+                        rtspUrl={camera.rtspFeed} 
+                        cameraId={camera.id}
+                      />
                       
                       {/* Dark overlay for text readability - slightly lighter than before to see video */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none z-10" />

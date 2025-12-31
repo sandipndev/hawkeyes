@@ -5,40 +5,41 @@ import { Video, VideoOff, Loader2 } from "lucide-react";
 
 interface CameraStreamProps {
   rtspUrl: string;
+  cameraId?: string;
   className?: string;
 }
 
-export function CameraStream({ rtspUrl, className }: CameraStreamProps) {
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+export function CameraStream({ rtspUrl, cameraId, className }: CameraStreamProps) {
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      // Parse RTSP URL: rtsp://host:port/path
-      const url = new URL(rtspUrl.replace("rtsp://", "http://"));
-      const path = url.pathname.replace(/^\//, ""); // remove leading slash
+    if (cameraId) {
+      const updateFrame = () => {
+        setFrameUrl(`/api/cameras/${cameraId}/frame/?t=${Date.now()}`);
+        setIsLoading(false);
+      };
       
-      // Use the Next.js rewrite proxy defined in next.config.ts
-      // This routes through our own backend to avoid CORS issues
-      const proxiedUrl = `/video-proxy/${path}/`;
-      setStreamUrl(proxiedUrl);
-    } catch (e) {
-      console.error("Failed to parse RTSP URL", e);
-      setError("Invalid stream URL");
+      updateFrame();
+      const interval = setInterval(updateFrame, 2000); // Polling every 2 seconds to reduce load
+      return () => clearInterval(interval);
+    } else {
+      setError("Camera ID missing");
       setIsLoading(false);
     }
-  }, [rtspUrl]);
+  }, [cameraId]);
 
   return (
     <div className={`relative w-full h-full bg-neutral-950 flex items-center justify-center overflow-hidden ${className}`}>
-      {streamUrl ? (
-        <iframe
-          src={streamUrl}
-          className="w-full h-full border-0 absolute inset-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          onLoad={() => setIsLoading(false)}
+      {frameUrl ? (
+        <img
+          src={frameUrl}
+          alt="Camera Feed"
+          className="w-full h-full object-cover absolute inset-0"
+          onError={() => {
+            setError("Stream unavailable");
+          }}
         />
       ) : (
         <div className="flex flex-col items-center gap-2 z-10">
@@ -49,7 +50,7 @@ export function CameraStream({ rtspUrl, className }: CameraStreamProps) {
         </div>
       )}
 
-      {isLoading && streamUrl && (
+      {isLoading && (
         <div className="absolute inset-0 bg-neutral-950 flex flex-col items-center justify-center gap-3 z-20">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
           <span className="text-[10px] font-mono text-neutral-500 tracking-widest uppercase">

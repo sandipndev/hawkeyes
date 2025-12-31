@@ -29,6 +29,7 @@
         openssl
         prisma-engines_6
         postgresql
+        ffmpeg
         nodePackages.typescript-language-server
         nodePackages.vercel
       ];
