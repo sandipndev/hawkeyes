@@ -1,0 +1,3 @@
+[submodule "Fake-RTSP-Stream"]
+	path = Fake-RTSP-Stream
+	url = git@github.com:insight-platform/Fake-RTSP-Stream.git
