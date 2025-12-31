@@ -21,6 +21,18 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  sitePlans SitePlan[]
+}
+
+model SitePlan {
+  id        String   @id @default(cuid())
+  name      String
+  data      Json
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Account {

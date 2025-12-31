@@ -1,13 +1,24 @@
 import { auth, signOut } from "@/auth"
 import { redirect } from "next/navigation"
 import Image from "next/image"
+import Link from "next/link"
+import { prisma } from "@/lib/prisma"
 
 export default async function DashboardPage() {
   const session = await auth()
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     redirect("/login")
   }
+
+  const sitePlans = await prisma.sitePlan.findMany({
+    where: {
+      userId: session.user.id,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  })
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
@@ -48,39 +59,40 @@ export default async function DashboardPage() {
       </header>
 
       <main className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
-            <h3 className="text-lg font-semibold mb-2">My Floorplans</h3>
-            <p className="text-neutral-400 text-sm mb-4">View and edit your 3D floorplans.</p>
-            <div className="aspect-video bg-neutral-800 rounded-lg flex items-center justify-center border border-neutral-700 dashed">
-              <span className="text-neutral-500">No floorplans yet</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-col">
+            <h3 className="text-lg font-semibold mb-2">My Siteplans</h3>
+            <p className="text-neutral-400 text-sm mb-4">View and edit your site plans and 3D neighborhoods.</p>
+            
+            <div className="flex-1 space-y-4 mb-4">
+              {sitePlans.length === 0 ? (
+                <div className="aspect-video bg-neutral-800 rounded-lg flex items-center justify-center border border-neutral-700 border-dashed">
+                  <span className="text-neutral-500">No siteplans yet</span>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {sitePlans.map((plan) => (
+                    <div 
+                      key={plan.id}
+                      className="p-3 bg-neutral-800 rounded-xl border border-neutral-700 hover:border-neutral-600 transition-colors group"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-sm">{plan.name}</span>
+                        <span className="text-[10px] text-neutral-500 uppercase">
+                          {new Date(plan.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <button className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition-colors">
-              Create New
-            </button>
-          </div>
 
-          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
-            <h3 className="text-lg font-semibold mb-2">Sensors</h3>
-            <p className="text-neutral-400 text-sm mb-4">Active IoT sensors and alerts.</p>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-neutral-800 rounded-xl border border-neutral-700">
-                <span className="text-sm">Temperature</span>
-                <span className="text-xs font-mono text-green-400">Active</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-neutral-800 rounded-xl border border-neutral-700">
-                <span className="text-sm">Occupancy</span>
-                <span className="text-xs font-mono text-green-400">Active</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl">
-            <h3 className="text-lg font-semibold mb-2">Team</h3>
-            <p className="text-neutral-400 text-sm mb-4">Manage access and collaborators.</p>
-            <button className="w-full border border-neutral-700 hover:bg-neutral-800 py-2 rounded-lg text-sm font-medium transition-colors">
-              Invite Members
-            </button>
+            <Link href="/dashboard/new-site">
+              <button className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition-colors">
+                Create New Siteplan
+              </button>
+            </Link>
           </div>
         </div>
       </main>
