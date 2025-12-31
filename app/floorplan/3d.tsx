@@ -1037,6 +1037,14 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
 export function NeighborhoodComponent({ neighborhood3D }: { neighborhood3D: Neighborhood3D }) {
   return (
     <group>
+      {/* Ground plane for scale */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <planeGeometry args={[1000, 1000]} />
+        <meshStandardMaterial color="#0a0a0a" roughness={1} metalness={0} />
+      </mesh>
+      {/* Grid helper for scale */}
+      <gridHelper args={[1000, 100, "#262626", "#171717"]} position={[0, 0, 0]} rotation={[0, 0, 0]} />
+      
       {neighborhood3D.roads.map((road, i) => (
         <RoadComponent key={road.id} road={road} index={i} />
       ))}

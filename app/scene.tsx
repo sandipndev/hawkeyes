@@ -2,14 +2,37 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useRef, useMemo, useEffect, useState } from "react";
-import { NeighborhoodComponent } from "./floorplan/3d";
+import { useRef, useMemo, useEffect } from "react";
+import { 
+  RoadComponent, 
+  BuildingComponent, 
+  TowerCCTVComponent, 
+  AnimatedPeople 
+} from "./floorplan/3d";
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
 import { type Neighborhood } from "./floorplan/model";
+import { type Neighborhood3D } from "./floorplan/3d";
 // @ts-ignore
 import * as THREE from "three";
 
 const DEFAULT_CAMERA_POS: [number, number, number] = [30, 20, 30];
+
+function LightNeighborhood({ neighborhood3D }: { neighborhood3D: Neighborhood3D }) {
+  return (
+    <group>
+      {neighborhood3D.roads.map((road, i) => (
+        <RoadComponent key={road.id} road={road} index={i} />
+      ))}
+      {neighborhood3D.buildings.map((building) => (
+        <BuildingComponent key={building.id} building3D={building} />
+      ))}
+      {neighborhood3D.towerCctvs.map((cctv) => (
+        <TowerCCTVComponent key={cctv.id} cctv={cctv} />
+      ))}
+      <AnimatedPeople neighborhood3D={neighborhood3D} />
+    </group>
+  );
+}
 
 function Scene() {
   const { camera } = useThree();
@@ -58,7 +81,9 @@ function Scene() {
 
   return (
     <>
-      <NeighborhoodComponent neighborhood3D={neighborhood3D} />
+      <ambientLight intensity={1.5} />
+      <directionalLight position={[10, 10, 5]} intensity={1} />
+      <LightNeighborhood neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
         autoRotate={!activeCameraId && !isPaused}
@@ -74,22 +99,6 @@ function Scene() {
 
 function SceneControls() {
   const { showCctvFrustums, setShowCctvFrustums, activeCameraId, setActiveCameraId, allCctvs } = useSceneSettings();
-  const [time, setTime] = useState<string>("");
-
-  useEffect(() => {
-    const update = () => {
-      setTime(new Date().toLocaleTimeString('en-US', { 
-        timeZone: 'UTC', 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit' 
-      }));
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const EyeIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -97,10 +106,6 @@ function SceneControls() {
 
   const CameraIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
-  );
-
-  const ClockIcon = (
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
   );
 
   return (
@@ -138,19 +143,6 @@ function SceneControls() {
             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </div>
         </div>
-
-        <div className="w-[1px] h-6 bg-slate-200" />
-
-        {/* UTC Clock */}
-        <div className="h-10 px-4 bg-slate-900 rounded-xl flex items-center gap-2.5 shadow-inner">
-          <div className="text-indigo-400">
-            {ClockIcon}
-          </div>
-          <div className="flex flex-col -space-y-1">
-            <span className="text-[10px] font-black text-white font-mono tracking-wider">{time}</span>
-            <span className="text-[7px] font-black text-indigo-400 uppercase tracking-[0.2em]">UTC</span>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -174,6 +166,7 @@ export default function Scene3D() {
         camera={{ position: DEFAULT_CAMERA_POS, fov: 45 }}
         gl={{ localClippingEnabled: true }}
       >
+        <color attach="background" args={["#ffffff"]} />
         <Scene />
       </Canvas>
     </div>
