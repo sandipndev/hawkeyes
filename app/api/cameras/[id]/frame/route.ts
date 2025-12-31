@@ -90,7 +90,7 @@ export async function GET(
       });
     });
 
-    return new NextResponse(frameBuffer, {
+    return new NextResponse(frameBuffer as any, {
       headers: {
         "Content-Type": "image/jpeg",
         "Cache-Control": "no-cache, no-store, must-revalidate",

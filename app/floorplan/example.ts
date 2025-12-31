@@ -13,9 +13,9 @@ const floor1: Floor = {
       dimensions: { x: 4, y: 6 },
       position: { x: -4, y: -3 },
       furniture: [
-        { type: Furniture.Bed, position: { x: -2, y: 0 }, rotation: 0 },
-        { type: Furniture.Table, position: { x: -0.5, y: 2 } },
-        { type: Furniture.Chair, position: { x: -0.5, y: 1 }, rotation: 180 },
+        { id: "f1-r1-b1", type: Furniture.Bed, position: { x: -2, y: 0 }, rotation: 0 },
+        { id: "f1-r1-t1", type: Furniture.Table, position: { x: -0.5, y: 2 } },
+        { id: "f1-r1-c1", type: Furniture.Chair, position: { x: -0.5, y: 1 }, rotation: 180 },
       ],
       sensors: {
         cctvs: [
@@ -37,8 +37,8 @@ const floor1: Floor = {
       dimensions: { x: 4, y: 6 },
       position: { x: 0, y: -3 },
       furniture: [
-        { type: Furniture.Bed, position: { x: 2, y: 0 }, rotation: 0 },
-        { type: Furniture.Table, position: { x: 0.5, y: 2 } },
+        { id: "f1-r2-b1", type: Furniture.Bed, position: { x: 2, y: 0 }, rotation: 0 },
+        { id: "f1-r2-t1", type: Furniture.Table, position: { x: 0.5, y: 2 } },
       ],
       sensors: {
         cctvs: [
@@ -67,7 +67,7 @@ const floor2: Floor = {
       name: "Office",
       dimensions: { x: 8, y: 6 },
       position: { x: -4, y: -3 },
-      furniture: [{ type: Furniture.Table, position: { x: 0, y: 0 } }],
+      furniture: [{ id: "f2-r1-t1", type: Furniture.Table, position: { x: 0, y: 0 } }],
     },
   ],
 };
