@@ -99,9 +99,13 @@ const toVec3Array = (v: Vec3): [number, number, number] => [v.x, v.y, v.z];
 const FLOOR_THICKNESS = 0.1;
 const WALL_THICKNESS = 0.1;
 
-const furnitureTo3D = (item: FurnitureItem, currentY: number): FurnitureProps => ({
+const furnitureTo3D = (item: FurnitureItem, currentY: number, roomPosition: Vec2): FurnitureProps => ({
   type: item.type,
-  position: { x: item.position.x, y: currentY, z: item.position.y },
+  position: { 
+    x: item.position.x + roomPosition.x, 
+    y: currentY, 
+    z: item.position.y + roomPosition.y 
+  },
   rotation: (item.rotation || 0) * Math.PI / 180,
   scale: item.scale,
 });
@@ -152,17 +156,21 @@ const roomTo3D = (room: Room, currentY: number, floorHeight: number, buildingPos
     id: room.id,
     name: room.name,
     walls: createWalls(room, currentY, floorHeight),
-    furniture: room.furniture.map(f => furnitureTo3D(f, currentY)),
+    furniture: room.furniture.map(f => furnitureTo3D(f, currentY, room.position)),
     sensors: {
       cctvs: (room.sensors?.cctvs || []).map((c, idx) => ({
         id: c.id,
         name: c.name || `${room.name} CAM ${idx + 1}`,
         fov: c.fov,
-        position: { x: c.position.x, y: currentY + c.height, z: c.position.y },
+        position: { 
+          x: c.position.x + room.position.x, 
+          y: currentY + c.height, 
+          z: c.position.y + room.position.y 
+        },
         worldPosition: { 
-          x: c.position.x + buildingPosition.x, 
+          x: c.position.x + room.position.x + buildingPosition.x, 
           y: currentY + buildingPosition.y + c.height, 
-          z: c.position.y + buildingPosition.z 
+          z: c.position.y + room.position.y + buildingPosition.z 
         },
         yaw: (c.yaw || 0) * Math.PI / 180,
         pitch: (c.pitch || 0) * Math.PI / 180,

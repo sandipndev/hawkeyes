@@ -17,12 +17,19 @@ import {
   Camera,
   Map as MapIcon,
   Building2,
-  Move
+  Move,
+  MousePointer2,
+  Hand,
+  Sofa,
+  Bed,
+  Table as TableIcon,
+  Armchair
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 import { Neighborhood, Building, Road, Floor, Room, FurnitureItem, TowerCCTV, CCTV, Furniture } from "@/app/floorplan/model"
@@ -34,7 +41,7 @@ import { neighborhoodTo3D } from "@/app/floorplan/3d"
 // --- Types ---
 
 type WizardStep = 1 | 2 | 3;
-type Tool = 'building' | 'road' | 'tower-cctv' | 'room' | 'furniture' | 'cctv' | 'select';
+type Tool = 'building' | 'road' | 'tower-cctv' | 'room' | 'furniture' | 'cctv' | 'select' | 'move' | 'hand';
 
 interface Selection {
   type: 'building' | 'road' | 'tower-cctv' | 'floor' | 'room' | 'furniture' | 'cctv';
@@ -63,6 +70,7 @@ export default function NewSiteWizard() {
   const [selection, setSelection] = useState<Selection | null>(null)
   const [tool, setTool] = useState<Tool>('select')
   const [is3DPanelOpen, setIs3DPanelOpen] = useState(true)
+  const [selectedFurnitureType, setSelectedFurnitureType] = useState<Furniture>(Furniture.Table)
   const [panelWidth, setPanelWidth] = useState(400) // px
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -91,7 +99,21 @@ export default function NewSiteWizard() {
   const neighborhood3D = useMemo(() => neighborhoodTo3D(neighborhood), [neighborhood]);
 
   const handleNext = () => {
-    if (step === 1) setStep(2)
+    if (step === 1) {
+      // Auto-select building if we're moving to Step 2
+      if (selection?.type === 'building') {
+        setSelectedBuildingId(selection.id);
+        const b = neighborhood.buildings.find(b => b.id === selection.id);
+        if (b && b.floors.length > 0) {
+          setSelectedFloorId(b.floors[0].id);
+        }
+      } else if (!selectedBuildingId && neighborhood.buildings.length > 0) {
+        // Fallback to first building
+        setSelectedBuildingId(neighborhood.buildings[0].id);
+        setSelectedFloorId(neighborhood.buildings[0].floors[0].id);
+      }
+      setStep(2)
+    }
     else if (step === 2) setStep(3)
   }
 
@@ -141,7 +163,36 @@ export default function NewSiteWizard() {
           </Link>
           <div>
             <h1 className="text-xs font-bold uppercase tracking-widest text-neutral-500">Site Wizard</h1>
-            <h2 className="text-sm font-black tracking-tight uppercase truncate max-w-[200px]">{neighborhood.name}</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-black tracking-tight uppercase truncate max-w-[150px]">{neighborhood.name}</h2>
+              {step === 2 && currentBuilding && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-neutral-700" />
+                  <div className="flex items-center gap-2 bg-blue-600/10 px-2 py-0.5 rounded border border-blue-500/20 group relative">
+                    <Building2 className="w-3 h-3 text-blue-500" />
+                    <select 
+                      value={selectedBuildingId || ""}
+                      onChange={(e) => {
+                        const bId = e.target.value;
+                        setSelectedBuildingId(bId);
+                        const b = neighborhood.buildings.find(b => b.id === bId);
+                        if (b && b.floors.length > 0) {
+                          setSelectedFloorId(b.floors[0].id);
+                        }
+                        setSelection(null);
+                      }}
+                      className="bg-transparent border-none text-sm font-black tracking-tight uppercase text-blue-400 focus:outline-none cursor-pointer hover:text-blue-300 transition-colors pr-1"
+                    >
+                      {neighborhood.buildings.map(b => (
+                        <option key={b.id} value={b.id} className="bg-neutral-900 text-white">
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -191,8 +242,20 @@ export default function NewSiteWizard() {
             <ToolbarButton 
               active={tool === 'select'} 
               onClick={() => setTool('select')} 
-              icon={<Move className="w-5 h-5" />} 
+              icon={<MousePointer2 className="w-5 h-5" />} 
               label="Select" 
+            />
+            <ToolbarButton 
+              active={tool === 'move'} 
+              onClick={() => setTool('move')} 
+              icon={<Move className="w-5 h-5" />} 
+              label="Move" 
+            />
+            <ToolbarButton 
+              active={tool === 'hand'} 
+              onClick={() => setTool('hand')} 
+              icon={<Hand className="w-5 h-5" />} 
+              label="Pan" 
             />
             <div className="w-8 h-[1px] bg-neutral-800 my-2" />
             
@@ -227,12 +290,32 @@ export default function NewSiteWizard() {
                   icon={<Box className="w-5 h-5" />} 
                   label="Room" 
                 />
+                <div className="w-8 h-[1px] bg-neutral-800 my-1" />
                 <ToolbarButton 
-                  active={tool === 'furniture'} 
-                  onClick={() => setTool('furniture')} 
-                  icon={<Plus className="w-5 h-5" />} 
-                  label="Furniture" 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Table} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Table); }} 
+                  icon={<TableIcon className="w-5 h-5" />} 
+                  label="Table" 
                 />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Bed} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Bed); }} 
+                  icon={<Bed className="w-5 h-5" />} 
+                  label="Bed" 
+                />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Sofa} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Sofa); }} 
+                  icon={<Sofa className="w-5 h-5" />} 
+                  label="Sofa" 
+                />
+                <ToolbarButton 
+                  active={tool === 'furniture' && selectedFurnitureType === Furniture.Chair} 
+                  onClick={() => { setTool('furniture'); setSelectedFurnitureType(Furniture.Chair); }} 
+                  icon={<Armchair className="w-5 h-5" />} 
+                  label="Chair" 
+                />
+                <div className="w-8 h-[1px] bg-neutral-800 my-1" />
                 <ToolbarButton 
                   active={tool === 'cctv'} 
                   onClick={() => setTool('cctv')} 
@@ -246,10 +329,32 @@ export default function NewSiteWizard() {
 
         {/* Canvas Area */}
         <div className="flex-1 bg-neutral-950 overflow-hidden relative">
+          <AnimatePresence>
+            {step === 2 && currentBuilding && (
+              <motion.div 
+                initial={{ x: -20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -20, opacity: 0 }}
+                className="absolute top-6 left-6 z-10 pointer-events-none"
+              >
+                <div className="bg-neutral-900/80 backdrop-blur-md border border-neutral-800 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600/20 flex items-center justify-center border border-blue-500/30">
+                    <Building2 className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500/70 leading-none mb-1">Editing Building</div>
+                    <div className="text-lg font-black uppercase tracking-tight text-white leading-none">{currentBuilding.name}</div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {step < 3 ? (
             <SitePlanCanvas 
               step={step}
               tool={tool}
+              selectedFurnitureType={selectedFurnitureType}
               neighborhood={neighborhood}
               setNeighborhood={setNeighborhood}
               selectedBuildingId={selectedBuildingId}
@@ -370,6 +475,7 @@ function ToolbarButton({ active, onClick, icon, label }: { active: boolean, onCl
 function SitePlanCanvas({ 
   step, 
   tool, 
+  selectedFurnitureType,
   neighborhood, 
   setNeighborhood,
   selectedBuildingId,
@@ -386,6 +492,49 @@ function SitePlanCanvas({
   const [drawStart, setDrawStart] = useState<Vec2 | null>(null)
   const [mousePos, setMousePos] = useState<Vec2 | null>(null)
   const [dragStart, setDragStart] = useState<Vec2 | null>(null)
+
+  const moveObject = (sel: Selection, dx: number, dy: number) => {
+    setNeighborhood((prev: Neighborhood) => {
+        const updated = JSON.parse(JSON.stringify(prev));
+        if (sel.type === 'building') {
+            const b = updated.buildings.find((b: Building) => b.id === sel.id);
+            if (b) { b.position.x += dx; b.position.y += dy; }
+        } else if (sel.type === 'road') {
+            const r = updated.roads.find((r: Road) => r.id === sel.id);
+            if (r) {
+                r.start.x += dx; r.start.y += dy;
+                r.end.x += dx; r.end.y += dy;
+            }
+        } else if (sel.type === 'tower-cctv') {
+            const t = updated.towerCctvs?.find((t: TowerCCTV) => t.id === sel.id);
+            if (t) { t.position.x += dx; t.position.y += dy; }
+        } else if (sel.type === 'room') {
+            const b = updated.buildings.find((b: Building) => b.id === sel.grandParentId);
+            const f = b?.floors.find((f: Floor) => f.id === sel.parentId);
+            const r = f?.rooms.find((r: Room) => r.id === sel.id);
+            if (r) { r.position.x += dx; r.position.y += dy; }
+        } else if (sel.type === 'cctv') {
+            for (const b of updated.buildings) {
+                for (const f of b.floors) {
+                    for (const r of f.rooms) {
+                        const c = r.sensors?.cctvs?.find((c: CCTV) => c.id === sel.id);
+                        if (c) { c.position.x += dx; c.position.y += dy; return updated; }
+                    }
+                }
+            }
+        } else if (sel.type === 'furniture') {
+            for (const b of updated.buildings) {
+                for (const f of b.floors) {
+                    for (const r of f.rooms) {
+                        const fur = r.furniture.find((fur: any) => fur.id === sel.id);
+                        if (fur) { fur.position.x += dx; fur.position.y += dy; return updated; }
+                    }
+                }
+            }
+        }
+        return updated;
+    });
+  };
 
   // Canvas coordinate transform
   const screenToWorld = (x: number, y: number): Vec2 => {
@@ -458,13 +607,22 @@ function SitePlanCanvas({
         neighborhood.buildings.forEach((building: Building) => drawBuilding(ctx, building, worldToScreen, selection?.id === building.id));
         // Draw Tower CCTVs
         neighborhood.towerCctvs.forEach((cctv: TowerCCTV) => drawTowerCCTV(ctx, cctv, worldToScreen, selection?.id === cctv.id));
-      } else if (step === 2 && selectedBuildingId) {
-        const building = neighborhood.buildings.find((b: Building) => b.id === selectedBuildingId);
-        if (building) {
-          // Draw Building Outline
-          drawBuilding(ctx, building, worldToScreen, false, true);
-          
-          if (selectedFloorId) {
+      } else if (step === 2) {
+        // Draw Roads for context
+        neighborhood.roads.forEach((road: Road) => drawRoad(ctx, road, worldToScreen));
+        // Draw Tower CCTVs for context
+        neighborhood.towerCctvs.forEach((cctv: TowerCCTV) => drawTowerCCTV(ctx, cctv, worldToScreen, selection?.id === cctv.id));
+
+        // Draw Buildings
+        neighborhood.buildings.forEach((building: Building) => {
+          const isSelected = selectedBuildingId === building.id;
+          const currentFloor = isSelected && selectedFloorId 
+            ? building.floors.find((f: Floor) => f.id === selectedFloorId) 
+            : building.floors[0];
+
+          drawBuilding(ctx, building, worldToScreen, isSelected || selection?.id === building.id, isSelected, currentFloor);
+
+          if (isSelected && selectedFloorId) {
             const floor = building.floors.find((f: Floor) => f.id === selectedFloorId);
             if (floor) {
               // Draw Rooms
@@ -485,7 +643,7 @@ function SitePlanCanvas({
               });
             }
           }
-        }
+        });
       }
 
       // Draw Preview if drawing
@@ -498,7 +656,7 @@ function SitePlanCanvas({
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [neighborhood, offset, zoom, isDrawing, drawStart, mousePos, selection, step, tool]);
+  }, [neighborhood, offset, zoom, isDrawing, drawStart, mousePos, selection, step, tool, selectedBuildingId, selectedFloorId]);
 
   // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -507,13 +665,27 @@ function SitePlanCanvas({
     const y = e.clientY - rect.top;
     const worldPos = screenToWorld(x, y);
 
-    if (e.button === 1 || (e.button === 0 && tool === 'select')) {
+    if (e.button === 1 || (e.button === 0 && tool === 'hand')) {
       // Pan start
       setDragStart({ x, y });
       return;
     }
 
-    if (tool !== 'select') {
+    if (e.button === 0 && (tool === 'select' || tool === 'move')) {
+      // Try to select something
+      const hit = findHitObject(worldPos, step, neighborhood, selectedBuildingId, selectedFloorId);
+      if (hit) {
+        setSelection(hit);
+        if (tool === 'move') {
+          setDragStart({ x, y });
+        }
+        return;
+      } else if (tool === 'select') {
+        setSelection(null);
+      }
+    }
+
+    if (tool !== 'select' && tool !== 'move' && tool !== 'hand') {
       setIsDrawing(true);
       setDrawStart(worldPos);
       setMousePos(worldPos);
@@ -527,10 +699,17 @@ function SitePlanCanvas({
     const worldPos = screenToWorld(x, y);
 
     if (dragStart) {
-      setOffset(prev => ({
-        x: prev.x + (x - dragStart.x),
-        y: prev.y + (y - dragStart.y)
-      }));
+      if (tool === 'hand' || e.button === 1) {
+        setOffset(prev => ({
+          x: prev.x + (x - dragStart.x),
+          y: prev.y + (y - dragStart.y)
+        }));
+      } else if (tool === 'move' && selection) {
+        // Move object
+        const dx = (x - dragStart.x) / zoom;
+        const dy = (y - dragStart.y) / zoom;
+        moveObject(selection, dx, dy);
+      }
       setDragStart({ x, y });
       return;
     }
@@ -719,7 +898,7 @@ function SitePlanCanvas({
              if (room) {
                  const newFurniture: FurnitureItem = {
                      id,
-                     type: Furniture.Table,
+                     type: selectedFurnitureType || Furniture.Table,
                      position: { x: relStart.x - room.position.x, y: relStart.y - room.position.y },
                      rotation: 0,
                      scale: 1
@@ -747,7 +926,12 @@ function SitePlanCanvas({
   return (
     <canvas 
       ref={canvasRef}
-      className="w-full h-full cursor-crosshair"
+      className={cn(
+        "w-full h-full",
+        tool === 'hand' ? "cursor-grab active:cursor-grabbing" : 
+        tool === 'move' ? "cursor-move" : 
+        tool === 'select' ? "cursor-default" : "cursor-crosshair"
+      )}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -812,9 +996,9 @@ function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, 
   }
 }
 
-function drawBuilding(ctx: CanvasRenderingContext2D, building: Building, toScreen: any, selected: boolean, outlineOnly = false) {
-  // Use first floor dimensions for outline
-  const floor = building.floors[0];
+function drawBuilding(ctx: CanvasRenderingContext2D, building: Building, toScreen: any, selected: boolean, outlineOnly = false, currentFloor?: Floor) {
+  // Use current floor dimensions or first floor
+  const floor = currentFloor || building.floors[0];
   const w = floor.dimensions.x;
   const h = floor.dimensions.y;
   const pos = toScreen(building.position.x - w/2, building.position.y - h/2);
@@ -929,11 +1113,41 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, rPos:
     
     ctx.fillStyle = selected ? 'rgba(37, 99, 235, 0.5)' : '#404040';
     ctx.strokeStyle = selected ? '#3b82f6' : '#737373';
+    ctx.lineWidth = selected ? 2 : 1;
     
     if (item.type === Furniture.Table) {
         ctx.strokeRect(-size, -size/2, size*2, size);
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.7, -size/2); ctx.lineTo(-size * 0.7, size/2);
+        ctx.moveTo(size * 0.7, -size/2); ctx.lineTo(size * 0.7, size/2);
+        ctx.stroke();
     } else if (item.type === Furniture.Bed) {
-        ctx.strokeRect(-size, -size*1.5, size*2, size*3);
+        ctx.strokeRect(-size, -size*1.3, size*2, size*2.6);
+        // Pillows
+        ctx.strokeRect(-size * 0.8, -size * 1.2, size * 0.6, size * 0.4);
+        ctx.strokeRect(size * 0.2, -size * 1.2, size * 0.6, size * 0.4);
+        // Blanket line
+        ctx.beginPath();
+        ctx.moveTo(-size, size * 0.2);
+        ctx.lineTo(size, size * 0.2);
+        ctx.stroke();
+    } else if (item.type === Furniture.Sofa) {
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 3, size);
+        // Arms
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 0.3, size);
+        ctx.strokeRect(size * 1.2, -size * 0.5, size * 0.3, size);
+        // Back rest
+        ctx.strokeRect(-size * 1.5, -size * 0.5, size * 3, size * 0.3);
+    } else if (item.type === Furniture.Chair) {
+        ctx.strokeRect(-size * 0.5, -size * 0.5, size, size);
+        // Back rest
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.5, -size * 0.5);
+        ctx.lineTo(size * 0.5, -size * 0.5);
+        ctx.stroke();
+        // Arms (optional)
+        ctx.strokeRect(-size * 0.5, -size * 0.5, size * 0.15, size);
+        ctx.strokeRect(size * 0.35, -size * 0.5, size * 0.15, size);
     } else {
         ctx.strokeRect(-size/2, -size/2, size, size);
     }
@@ -959,6 +1173,8 @@ function drawPreview(ctx: CanvasRenderingContext2D, tool: Tool, start: Vec2, end
     ctx.beginPath();
     ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
     ctx.stroke();
+  } else if (tool === 'furniture') {
+    ctx.strokeRect(s.x - 10, s.y - 10, 20, 20);
   }
 
   ctx.setLineDash([]);
@@ -1000,7 +1216,7 @@ function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
         {(selection.type === 'tower-cctv' || selection.type === 'cctv') && (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <Label className="text-[9px] uppercase text-neutral-500 font-bold">Yaw (deg)</Label>
                 <Input 
                   type="number"
@@ -1008,8 +1224,15 @@ function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
                   onChange={(e) => updateProp('yaw', Number(e.target.value))}
                   className="h-8 text-xs bg-neutral-950 border-neutral-800"
                 />
+                <Slider 
+                  value={[item.yaw || 0]} 
+                  min={0} 
+                  max={360} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('yaw', val)}
+                />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <Label className="text-[9px] uppercase text-neutral-500 font-bold">Pitch (deg)</Label>
                 <Input 
                   type="number"
@@ -1017,9 +1240,16 @@ function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
                   onChange={(e) => updateProp('pitch', Number(e.target.value))}
                   className="h-8 text-xs bg-neutral-950 border-neutral-800"
                 />
+                <Slider 
+                  value={[item.pitch || 0]} 
+                  min={-90} 
+                  max={90} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('pitch', val)}
+                />
               </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
                 <Label className="text-[9px] uppercase text-neutral-500 font-bold">FOV</Label>
                 <Input 
                   type="number"
@@ -1027,11 +1257,19 @@ function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
                   onChange={(e) => updateProp('fov', Number(e.target.value))}
                   className="h-8 text-xs bg-neutral-950 border-neutral-800"
                 />
+                <Slider 
+                  value={[item.fov || 90]} 
+                  min={10} 
+                  max={150} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('fov', val)}
+                />
               </div>
           </>
         )}
 
         {selection.type === 'furniture' && (
+          <div className="space-y-3">
             <div className="space-y-1">
                 <Label className="text-[9px] uppercase text-neutral-500 font-bold">Type</Label>
                 <select 
@@ -1042,6 +1280,39 @@ function PropertiesPanel({ selection, neighborhood, setNeighborhood }: any) {
                     {Object.values(Furniture).map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
             </div>
+            <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Rotation (deg)</Label>
+                <Input 
+                  type="number"
+                  value={item.rotation || 0} 
+                  onChange={(e) => updateProp('rotation', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.rotation || 0]} 
+                  min={0} 
+                  max={360} 
+                  step={1} 
+                  onValueChange={([val]) => updateProp('rotation', val)}
+                />
+            </div>
+            <div className="space-y-2">
+                <Label className="text-[9px] uppercase text-neutral-500 font-bold">Scale</Label>
+                <Input 
+                  type="number"
+                  value={item.scale || 1} 
+                  onChange={(e) => updateProp('scale', Number(e.target.value))}
+                  className="h-8 text-xs bg-neutral-950 border-neutral-800"
+                />
+                <Slider 
+                  value={[item.scale || 1]} 
+                  min={0.1} 
+                  max={5} 
+                  step={0.1} 
+                  onValueChange={([val]) => updateProp('scale', val)}
+                />
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -1078,6 +1349,11 @@ function LayersList({
                 const f = b.floors.find((f: Floor) => f.id === gpId);
                 const r = f.rooms.find((r: Room) => r.id === pId);
                 r.sensors.cctvs = r.sensors.cctvs.filter((c: CCTV) => c.id !== id);
+            } else if (type === 'furniture') {
+                const b = updated.buildings.find((b: Building) => b.id === selectedBuildingId);
+                const f = b.floors.find((f: Floor) => f.id === gpId);
+                const r = f.rooms.find((r: Room) => r.id === pId);
+                r.furniture = r.furniture.filter((fur: FurnitureItem) => fur.id !== id);
             }
             return updated;
         });
@@ -1125,6 +1401,14 @@ function LayersList({
         
         return (
             <div className="space-y-4">
+                <div className="px-3 py-2 bg-blue-600/10 border border-blue-500/20 rounded-xl mx-2 mt-1 flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                    <div className="min-w-0">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-blue-500/70 leading-none mb-1">Building</div>
+                        <div className="text-xs font-bold text-white truncate">{building?.name}</div>
+                    </div>
+                </div>
+
                 <div className="space-y-1">
                     <span className="text-[9px] uppercase text-neutral-600 font-bold px-2">Floors</span>
                     {building?.floors.map((f: Floor) => (
@@ -1185,6 +1469,19 @@ function LayersList({
                             onDelete={() => handleDelete('cctv', c.id, r.id, selectedFloorId)}
                         />
                     )) || [])}
+                    {floor?.rooms.flatMap((r: Room) => r.furniture.map((f: FurnitureItem) => (
+                        <LayerItem 
+                            key={f.id} 
+                            name={`${f.type}`} 
+                            active={selection?.id === f.id} 
+                            icon={f.type === Furniture.Sofa ? <Sofa className="w-3 h-3" /> : 
+                                  f.type === Furniture.Bed ? <Bed className="w-3 h-3" /> :
+                                  f.type === Furniture.Table ? <TableIcon className="w-3 h-3" /> :
+                                  <Armchair className="w-3 h-3" />}
+                            onClick={() => setSelection({ type: 'furniture', id: f.id, parentId: r.id, grandParentId: selectedFloorId })}
+                            onDelete={() => handleDelete('furniture', f.id, r.id, selectedFloorId)}
+                        />
+                    )))}
                 </div>
             </div>
         );
@@ -1250,12 +1547,80 @@ function findItem(selection: Selection, neighborhood: Neighborhood): any {
         for (const b of neighborhood.buildings) {
             for (const f of b.floors) {
                 for (const r of f.rooms) {
-                    const fur = r.furniture.find((fur: any) => fur.id === selection.id);
+                    const fur = r.furniture.find(fur => fur.id === selection.id);
                     if (fur) return fur;
                 }
             }
         }
     }
-    
+
     return null;
 }
+
+function findHitObject(pos: Vec2, step: number, neighborhood: Neighborhood, buildingId: string | null, floorId: string | null): Selection | null {
+    if (step === 1) {
+        // Check Tower CCTVs (circles)
+        for (const t of neighborhood.towerCctvs || []) {
+            const dist = Math.sqrt(Math.pow(pos.x - t.position.x, 2) + Math.pow(pos.y - t.position.y, 2));
+            if (dist < 0.5) return { type: 'tower-cctv', id: t.id };
+        }
+
+        // Check Buildings (rects)
+        for (const b of neighborhood.buildings) {
+            const w = b.floors[0].dimensions.x;
+            const h = b.floors[0].dimensions.y;
+            if (pos.x >= b.position.x - w/2 && pos.x <= b.position.x + w/2 &&
+                pos.y >= b.position.y - h/2 && pos.y <= b.position.y + h/2) {
+                return { type: 'building', id: b.id };
+            }
+        }
+
+        // Check Roads (lines)
+        for (const r of neighborhood.roads) {
+            // Distance from point to line segment
+            const L2 = Math.pow(r.end.x - r.start.x, 2) + Math.pow(r.end.y - r.start.y, 2);
+            if (L2 === 0) continue;
+            let t = ((pos.x - r.start.x) * (r.end.x - r.start.x) + (pos.y - r.start.y) * (r.end.y - r.start.y)) / L2;
+            t = Math.max(0, Math.min(1, t));
+            const projX = r.start.x + t * (r.end.x - r.start.x);
+            const projY = r.start.y + t * (r.end.y - r.start.y);
+            const dist = Math.sqrt(Math.pow(pos.x - projX, 2) + Math.pow(pos.y - projY, 2));
+            if (dist < (r.width || 4) / 2) return { type: 'road', id: r.id };
+        }
+    } else if (step === 2 && buildingId && floorId) {
+        const building = neighborhood.buildings.find(b => b.id === buildingId);
+        const floor = building?.floors.find(f => f.id === floorId);
+        if (!building || !floor) return null;
+
+        const relPos = { x: pos.x - building.position.x, y: pos.y - building.position.y };
+
+        // Check Furniture
+        for (const r of floor.rooms) {
+            for (const f of r.furniture) {
+                const fPos = { x: r.position.x + f.position.x, y: r.position.y + f.position.y };
+                const dist = Math.sqrt(Math.pow(relPos.x - fPos.x, 2) + Math.pow(relPos.y - fPos.y, 2));
+                if (dist < 0.3) return { type: 'furniture', id: f.id, parentId: r.id, grandParentId: floorId };
+            }
+        }
+
+        // Check CCTVs
+        for (const r of floor.rooms) {
+            for (const c of r.sensors?.cctvs || []) {
+                const cPos = { x: r.position.x + c.position.x, y: r.position.y + c.position.y };
+                const dist = Math.sqrt(Math.pow(relPos.x - cPos.x, 2) + Math.pow(relPos.y - cPos.y, 2));
+                if (dist < 0.2) return { type: 'cctv', id: c.id, parentId: r.id, grandParentId: floorId };
+            }
+        }
+
+        // Check Rooms
+        for (const r of floor.rooms) {
+            if (relPos.x >= r.position.x && relPos.x <= r.position.x + r.dimensions.x &&
+                relPos.y >= r.position.y && relPos.y <= r.position.y + r.dimensions.y) {
+                return { type: 'room', id: r.id, parentId: floorId, grandParentId: buildingId };
+            }
+        }
+    }
+
+    return null;
+}
+
