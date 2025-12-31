@@ -13,6 +13,7 @@ import {
   Check
 } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { Neighborhood, CCTV, TowerCCTV } from "@/app/floorplan/model"
 import { SceneSettingsProvider } from "@/app/floorplan/context"
 import Scene3D from "@/app/scene"
@@ -128,10 +129,15 @@ export default function SitePlanView({ sitePlan }: SitePlanViewProps) {
     <div className="h-screen bg-neutral-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
       <header className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-900/50 backdrop-blur-md z-30">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
-            <ChevronLeft className="w-5 h-5" />
-          </Link>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard" className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+            <div className="w-8 h-8 relative rounded-lg overflow-hidden shadow-[0_0_15px_rgba(59,130,246,0.2)] border border-white/5">
+              <Image src="/logo.png" alt="Hawkeyes Logo" fill className="object-cover" />
+            </div>
+          </div>
           <div>
             <h1 className="text-xs font-bold uppercase tracking-widest text-neutral-500">Site Plan</h1>
             <h2 className="text-sm font-black tracking-tight uppercase truncate max-w-[200px]">{sitePlan.name}</h2>

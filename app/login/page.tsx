@@ -1,11 +1,17 @@
 import { signIn } from "@/auth"
+import Image from "next/image"
 
 export default function LoginPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-950 text-white">
       <div className="p-8 bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-800 w-full max-w-md text-center">
-        <h1 className="text-3xl font-bold mb-6">Welcome Back</h1>
-        <p className="text-neutral-400 mb-8">Sign in to Hawkeyes to manage your floorplans.</p>
+        <div className="flex justify-center mb-6">
+          <div className="w-12 h-12 relative rounded-xl overflow-hidden shadow-[0_0_20px_rgba(59,130,246,0.3)] border border-white/10">
+            <Image src="/logo.png" alt="Hawkeyes Logo" fill className="object-cover" />
+          </div>
+        </div>
+        <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
+        <p className="text-neutral-400 mb-8">Sign in to Hawkeyes to manage your sites.</p>
         
         <form
           action={async () => {

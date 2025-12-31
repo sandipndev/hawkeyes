@@ -45,8 +45,8 @@ export default async function DashboardPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Video className="w-5 h-5 text-white" />
+                <div className="w-8 h-8 relative rounded-lg overflow-hidden shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                  <Image src="/logo.png" alt="Hawkeyes Logo" fill className="object-cover" />
                 </div>
                 <span className="text-xl font-bold tracking-tight">Hawkeyes</span>
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useState, useRef } from "react";
 import { neighborhood as exampleNeighborhood, TOWER_CAM_2 } from "./floorplan/example";
@@ -114,10 +115,12 @@ export default function Home() {
   return (
     <SceneSettingsProvider neighborhood={neighborhood}>
       <main>
-        <header className="border-b border-border backdrop-blur-sm fixed top-0 w-full z-50 bg-black/50">
+        <header className="border-b border-white/5 backdrop-blur-md fixed top-0 w-full z-50 bg-black/20">
         <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg shadow-[0_0_15px_rgba(0,210,255,0.5)] border border-white/20" />
+            <div className="w-8 h-8 relative rounded-lg overflow-hidden shadow-[0_0_15px_rgba(var(--primary),0.5)] border border-white/20">
+              <Image src="/logo.png" alt="Hawkeyes Logo" fill className="object-cover" />
+            </div>
             <span className="font-black text-xl tracking-tighter uppercase text-white">Hawkeyes</span>
           </div>
           <Link href="/login" className="px-6 py-2 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-full font-medium hover:bg-white/20 transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]">
@@ -128,10 +131,13 @@ export default function Home() {
 
       <InfiniteHero 
         title={
-          <>
-            Real-Time Intelligence for
-            <span className="bg-gradient-to-r from-primary via-white to-secondary bg-clip-text text-transparent italic"> Physical Spaces</span>
-          </>
+          <div className="relative inline-block">
+            <div className="absolute -inset-x-20 -inset-y-10 bg-primary/20 blur-[100px] rounded-full opacity-50" />
+            <div className="relative z-10">
+              Real-Time Intelligence for
+              <span className="bg-gradient-to-r from-primary via-white to-secondary bg-clip-text text-transparent italic"> Physical Spaces</span>
+            </div>
+          </div>
         }
         description="Hawkeyes is the foundational engine that lets AI understand and reason about real-world spaces—so humans can act faster, with total confidence."
         primaryCtaText="Get Started Now"
@@ -142,23 +148,23 @@ export default function Home() {
       <section className="px-6 pb-24 -mt-32 relative z-20">
         <div className="max-w-4xl mx-auto">
           <div className="grid md:grid-cols-3 gap-6 pt-8 text-left">
-            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-primary/30 transition-all group overflow-hidden relative">
-              <div className="absolute -right-10 -top-10 w-24 h-24 bg-primary/10 blur-2xl rounded-full" />
-              <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mb-6 text-2xl shadow-[0_0_20px_rgba(0,210,255,0.2)] group-hover:scale-110 transition-transform">🏢</div>
+            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-primary/50 hover:shadow-primary/20 transition-all group overflow-hidden relative">
+              <div className="absolute -right-10 -top-10 w-24 h-24 bg-primary/20 blur-2xl rounded-full" />
+              <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center mb-6 text-2xl shadow-primary/30 group-hover:scale-110 transition-transform">🏢</div>
               <h3 className="font-black text-xl mb-3 uppercase tracking-tight group-hover:text-primary transition-colors">Spatial Intel</h3>
               <p className="text-sm text-slate-400 font-medium leading-relaxed">Buildings, floors, rooms, and cameras as a living environment</p>
             </div>
             
-            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-secondary/30 transition-all group overflow-hidden relative">
-              <div className="absolute -right-10 -top-10 w-24 h-24 bg-secondary/10 blur-2xl rounded-full" />
-              <div className="w-12 h-12 rounded-2xl bg-secondary/20 border border-secondary/30 flex items-center justify-center mb-6 text-2xl shadow-[0_0_20px_rgba(0,255,135,0.2)] group-hover:scale-110 transition-transform">⚡</div>
+            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-secondary/50 hover:shadow-secondary/20 transition-all group overflow-hidden relative">
+              <div className="absolute -right-10 -top-10 w-24 h-24 bg-secondary/20 blur-2xl rounded-full" />
+              <div className="w-12 h-12 rounded-2xl bg-secondary/20 border border-secondary/40 flex items-center justify-center mb-6 text-2xl shadow-secondary/30 group-hover:scale-110 transition-transform">⚡</div>
               <h3 className="font-black text-xl mb-3 uppercase tracking-tight group-hover:text-secondary transition-colors">Live Detect</h3>
               <p className="text-sm text-slate-400 font-medium leading-relaxed">Detect and verify unusual situations as they unfold in real-time</p>
             </div>
             
-            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-accent/30 transition-all group overflow-hidden relative">
-              <div className="absolute -right-10 -top-10 w-24 h-24 bg-accent/10 blur-2xl rounded-full" />
-              <div className="w-12 h-12 rounded-2xl bg-accent/20 border border-accent/30 flex items-center justify-center mb-6 text-2xl shadow-[0_0_20px_rgba(255,184,0,0.2)] group-hover:scale-110 transition-transform">🔒</div>
+            <div className="p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-2xl hover:bg-white/[0.05] hover:border-accent/50 hover:shadow-accent/20 transition-all group overflow-hidden relative">
+              <div className="absolute -right-10 -top-10 w-24 h-24 bg-accent/20 blur-2xl rounded-full" />
+              <div className="w-12 h-12 rounded-2xl bg-accent/20 border border-accent/40 flex items-center justify-center mb-6 text-2xl shadow-accent/30 group-hover:scale-110 transition-transform">🔒</div>
               <h3 className="font-black text-xl mb-3 uppercase tracking-tight group-hover:text-accent transition-colors">Privacy First</h3>
               <p className="text-sm text-slate-400 font-medium leading-relaxed">Focuses on behavior and location, not personal identity</p>
             </div>
@@ -168,13 +174,13 @@ export default function Home() {
 
       <section ref={demoSectionRef} className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center px-6 py-24 relative overflow-hidden">
         {/* Decorative background elements */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-slate-500/10 blur-[120px] rounded-full pointer-events-none" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary/10 blur-[120px] rounded-full pointer-events-none animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-secondary/10 blur-[120px] rounded-full pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
         
         <div className="max-w-7xl w-full mb-16 relative z-10">
           <div className="flex flex-col space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 text-[10px] font-black tracking-[0.2em] uppercase w-fit">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-black tracking-[0.2em] uppercase w-fit shadow-primary/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-primary" />
               Live Monitoring System
             </div>
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
@@ -278,7 +284,7 @@ export default function Home() {
               <div className="h-full p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex flex-col justify-center text-center">
                 <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative z-10">
-                  <div className="w-20 h-20 rounded-3xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-8 text-4xl shadow-[0_0_30px_rgba(0,210,255,0.2)] group-hover:scale-110 transition-transform">🗺️</div>
+                  <div className="w-20 h-20 rounded-3xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-8 text-4xl shadow-primary/20 group-hover:scale-110 transition-transform">🗺️</div>
                   <h3 className="font-black text-3xl mb-4 uppercase tracking-tight text-white group-hover:text-primary transition-colors">Spatial Foundation</h3>
                   <p className="text-slate-400 font-medium leading-relaxed">
                     We turn your site plans into a precise digital layout so the system understands where things actually are.
@@ -289,7 +295,7 @@ export default function Home() {
             trackers={
               <div className="h-full p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex flex-col">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/20 border border-secondary/30 flex items-center justify-center text-xl shadow-inner shadow-secondary/20">📹</div>
+                  <div className="w-10 h-10 rounded-xl bg-secondary/20 border border-secondary/30 flex items-center justify-center text-xl shadow-secondary/20">📹</div>
                   <h3 className="font-black text-sm uppercase tracking-tight text-white group-hover:text-secondary transition-colors leading-tight">Edge Intel</h3>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
@@ -300,7 +306,7 @@ export default function Home() {
             statistic={
               <div className="h-full p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex flex-col">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center text-xl shadow-inner shadow-accent/20">🧠</div>
+                  <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center text-xl shadow-accent/20">🧠</div>
                   <h3 className="font-black text-sm uppercase tracking-tight text-white group-hover:text-accent transition-colors leading-tight">Neural Fusion</h3>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
@@ -311,7 +317,7 @@ export default function Home() {
             focus={
               <div className="h-full p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex flex-col">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-xl shadow-inner shadow-primary/20">✨</div>
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-xl shadow-primary/20">✨</div>
                   <h3 className="font-black text-sm uppercase tracking-tight text-white group-hover:text-primary transition-colors leading-tight">AI Analysis</h3>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
@@ -322,7 +328,7 @@ export default function Home() {
             productivity={
               <div className="h-full p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex flex-col">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-slate-400/20 border border-slate-400/30 flex items-center justify-center text-xl shadow-inner shadow-white/10">⚡</div>
+                  <div className="w-10 h-10 rounded-xl bg-slate-400/20 border border-slate-400/30 flex items-center justify-center text-xl shadow-white/10">⚡</div>
                   <h3 className="font-black text-sm uppercase tracking-tight text-white group-hover:text-white transition-colors leading-tight">Real-time Intel</h3>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
@@ -332,7 +338,7 @@ export default function Home() {
             }
             shortcuts={
               <div className="h-full p-8 rounded-[2rem] border border-white/10 bg-white/[0.02] backdrop-blur-xl hover:bg-white/[0.05] transition-all group overflow-hidden relative flex items-center gap-8">
-                <div className="w-16 h-16 rounded-2xl bg-secondary/20 border border-secondary/30 flex items-center justify-center text-3xl shadow-inner shadow-secondary/20 group-hover:scale-110 transition-transform flex-shrink-0">🔔</div>
+                <div className="w-16 h-16 rounded-2xl bg-secondary/20 border border-secondary/30 flex items-center justify-center text-3xl shadow-secondary/20 group-hover:scale-110 transition-transform flex-shrink-0">🔔</div>
                 <div className="flex-1">
                   <h3 className="font-black text-2xl mb-2 uppercase tracking-tight text-white group-hover:text-secondary transition-colors">Smart Alerting</h3>
                   <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-xl">
@@ -348,7 +354,9 @@ export default function Home() {
       <footer className="bg-black border-t border-white/5 py-12 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-primary to-secondary rounded shadow-[0_0_10px_rgba(0,210,255,0.3)]" />
+            <div className="w-6 h-6 relative rounded overflow-hidden shadow-[0_0_10px_rgba(var(--primary),0.3)]">
+              <Image src="/logo.png" alt="Hawkeyes Logo" fill className="object-cover" />
+            </div>
             <span className="font-black tracking-tighter uppercase text-white">Hawkeyes</span>
           </div>
           <div className="flex gap-8 text-sm text-white/60">

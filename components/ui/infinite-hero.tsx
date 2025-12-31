@@ -179,7 +179,15 @@ function ShaderBackground({
         f = float(nbStep) / float(STEP);
         
         f *= .9;
-        vec3 col = vec3(f);
+        
+        // Add futuristic color palette
+        vec3 cyan = vec3(0.05, 0.4, 0.9);
+        vec3 purple = vec3(0.4, 0.05, 0.8);
+        vec3 col = mix(cyan, purple, f * 1.2);
+        col *= f * 1.5; // Scale intensity by depth
+        
+        // Add a bit of grain/noise for texture
+        col += (noise(uv * 100.0 + u_time) * 0.02);
                 
         fragColor = vec4(col,1.0);
     }

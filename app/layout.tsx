@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Hawkeyes | Real-Time Intelligence Engine",
   description: "AI-powered spatial intelligence for physical spaces. Real-time monitoring, threat detection, and incident response.",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({
