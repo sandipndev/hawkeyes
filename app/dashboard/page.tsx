@@ -5,6 +5,7 @@ import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { Camera, Video, MapPin, ExternalLink, Plus, LayoutDashboard, Settings, Bell } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { CameraStream } from "@/components/camera-stream"
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -22,7 +23,7 @@ export default async function DashboardPage() {
     },
   })
 
-  const cameras = await prisma.camera.findMany({
+  const cameras = await (prisma as any).camera.findMany({
     where: {
       sitePlan: {
         userId: session.user.id,
@@ -188,37 +189,31 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {cameras.map((camera) => (
+                {cameras.map((camera: any) => (
                   <div key={camera.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col group hover:border-blue-500/30 transition-all shadow-xl shadow-black/20">
-                    {/* Video Placeholder */}
-                    <div className="aspect-video bg-neutral-950 relative flex items-center justify-center overflow-hidden">
-                      {/* Dark overlay for text readability */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
+                    {/* Video Stream Container */}
+                    <div className="aspect-video bg-neutral-950 relative overflow-hidden">
+                      <CameraStream rtspUrl={camera.rtspFeed} />
                       
-                      {/* Scanning Lines Effect Placeholder */}
-                      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,3px_100%]" />
-
-                      <div className="flex flex-col items-center gap-2 z-10">
-                        <Video className="w-10 h-10 text-neutral-800 group-hover:text-blue-500/40 transition-all duration-500 group-hover:scale-110" />
-                        <span className="text-[10px] font-mono text-neutral-700 tracking-widest uppercase">No Signal</span>
-                      </div>
+                      {/* Dark overlay for text readability - slightly lighter than before to see video */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none z-10" />
                       
                       {/* Overlay: Status & Site */}
-                      <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
+                      <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
                         <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-md rounded-md border border-white/10">
                           <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                           <span className="text-[9px] font-black text-white uppercase tracking-wider">Live</span>
                         </div>
                       </div>
 
-                      <div className="absolute top-3 right-3 z-10">
-                        <div className="px-2 py-1 bg-blue-600/10 backdrop-blur-md rounded-md border border-blue-500/20">
+                      <div className="absolute top-3 right-3 z-20">
+                        <div className="px-2 py-1 bg-blue-600/20 backdrop-blur-md rounded-md border border-blue-500/30">
                           <span className="text-[9px] font-bold text-blue-400 uppercase tracking-tighter">{camera.sitePlan.name}</span>
                         </div>
                       </div>
                       
                       {/* Overlay: Camera Feed Info */}
-                      <div className="absolute bottom-3 left-3 right-3 z-10">
+                      <div className="absolute bottom-3 left-3 right-3 z-20">
                          <div className="flex flex-col">
                             <h4 className="font-bold text-white text-sm mb-0.5">{camera.name}</h4>
                             <p className="text-[9px] font-mono text-neutral-400 truncate opacity-70">{camera.rtspFeed}</p>
