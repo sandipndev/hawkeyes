@@ -419,7 +419,7 @@ export function FurnitureItemComponent({ item }: { item: FurnitureProps }) {
 }
 
 export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHeight?: number }) {
-  const { showCctvFrustums, activeCameraId } = useSceneSettings();
+  const { showCctvFrustums, activeCameraId, isPaused } = useSceneSettings();
   const fovRad = (cctv.fov * Math.PI) / 180;
   const coneRadius = Math.tan(fovRad / 2) * coneHeight;
   const isCurrentlyActive = activeCameraId === cctv.id;
@@ -467,18 +467,20 @@ export function CCTVComponent({ cctv, coneHeight = 100 }: { cctv: CCTV3D; coneHe
         )}
 
         {/* Camera Label */}
-        <Html
-          position={[0, 0.25, 0]}
-          center
-          distanceFactor={15}
-          transform
-          sprite
-          pointerEvents="none"
-        >
-          <div className="px-1.5 py-0.5 rounded bg-slate-800/80 backdrop-blur-sm text-[8px] font-bold text-slate-200 border border-slate-700 shadow-lg whitespace-nowrap select-none pointer-events-none">
-            {cctv.name}
-          </div>
-        </Html>
+        {!isPaused && (
+          <Html
+            position={[0, 0.25, 0]}
+            center
+            distanceFactor={15}
+            transform
+            sprite
+            pointerEvents="none"
+          >
+            <div className="px-1.5 py-0.5 rounded bg-slate-800/80 backdrop-blur-sm text-[8px] font-bold text-slate-200 border border-slate-700 shadow-lg whitespace-nowrap select-none pointer-events-none">
+              {cctv.name}
+            </div>
+          </Html>
+        )}
 
         {/* Field of View Visualization (Frustum) */}
         {showCctvFrustums && !isCurrentlyActive && (
@@ -672,8 +674,6 @@ export function PersonComponent({ person }: { person: Person3D }) {
   const { isPaused } = useSceneSettings();
   
   useFrame((state) => {
-    if (isPaused) return;
-    
     if (groupRef.current) {
       // Direct position update for smoother visual movement
       groupRef.current.position.copy(person.position);
@@ -710,24 +710,26 @@ export function PersonComponent({ person }: { person: Person3D }) {
       </mesh>
       
       {/* Identifier Label */}
-      <Html 
-        position={[0, 1.4, 0]} 
-        center 
-        distanceFactor={15} 
-        transform
-        sprite
-        pointerEvents="none"
-      >
-        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none pointer-events-none ${
-          !person.isVisible 
-            ? 'bg-slate-400 opacity-60' 
-            : person.isThreat 
-              ? 'bg-red-500 animate-pulse' 
-              : 'bg-blue-500'
-        }${person.isVisible && !person.isThreat && person.isPanicking ? ' animate-bounce' : ''}`}>
-          {person.isVisible ? (person.isThreat ? 'THREAT' : 'PERSON') : 'UNDETECTED'} #{person.id}
-        </div>
-      </Html>
+      {!isPaused && (
+        <Html 
+          position={[0, 1.4, 0]} 
+          center 
+          distanceFactor={15} 
+          transform
+          sprite
+          pointerEvents="none"
+        >
+          <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 select-none pointer-events-none ${
+            !person.isVisible 
+              ? 'bg-slate-400 opacity-60' 
+              : person.isThreat 
+                ? 'bg-red-500 animate-pulse' 
+                : 'bg-blue-500'
+          }${person.isVisible && !person.isThreat && person.isPanicking ? ' animate-bounce' : ''}`}>
+            {person.isVisible ? (person.isThreat ? 'THREAT' : 'PERSON') : 'UNDETECTED'} #{person.id}
+          </div>
+        </Html>
+      )}
 
       {/* Ring at the feet */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
@@ -761,8 +763,6 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
   }, [allCctvs]);
 
   useEffect(() => {
-    if (isPaused) return;
-
     people.forEach(p => {
       // Check if the person is currently visible and this is a new detection event
       if (p.isVisible && p.threatDetectedAt && p.threatDetectedAt !== lastDetectionTimes.current[p.id]) {
@@ -859,8 +859,6 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
   }, [validPoints]);
 
   useFrame((state, delta) => {
-    if (isPaused) return;
-    
     const now = state.clock.elapsedTime;
     
     setPeople(prevPeople => {

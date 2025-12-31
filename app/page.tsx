@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { neighborhood as exampleNeighborhood, TOWER_CAM_2 } from "./floorplan/example";
 import { SceneSettingsProvider, useSceneSettings } from "./floorplan/context";
 import InfiniteHero from "@/components/ui/infinite-hero";
@@ -39,18 +39,22 @@ function DetectionsList() {
         return (
           <div 
             key={event.id} 
-            className={`p-5 rounded-[1.5rem] border transition-all duration-300 ${
+            className={`p-6 rounded-[2rem] border transition-all duration-500 group/card ${
               isActive 
                 ? isThreat 
-                  ? 'bg-red-500/10 border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.1)]' 
-                  : 'bg-white/5 border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.05)]'
-                : 'bg-white/5 border-white/5 opacity-40'
+                  ? 'bg-red-500/[0.08] border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.15)]' 
+                  : 'bg-white/[0.03] border-white/10 shadow-[0_0_40px_rgba(255,255,255,0.02)] hover:bg-white/[0.05] hover:border-white/20'
+                : 'bg-white/[0.02] border-white/5 opacity-30 hover:opacity-50'
             }`}
           >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isActive ? (isThreat ? 'bg-red-500 animate-pulse' : 'bg-primary animate-pulse shadow-[0_0_8px_rgba(0,210,255,0.8)]') : 'bg-slate-600'}`} />
-                <span className={`text-[10px] font-black tracking-[0.2em] uppercase ${
+            <div className="flex items-start justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-2.5 h-2.5 rounded-full ${
+                  isActive 
+                    ? (isThreat ? 'bg-red-500 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.8)]' : 'bg-primary animate-pulse shadow-[0_0_12px_rgba(0,210,255,0.8)]') 
+                    : 'bg-slate-600'
+                }`} />
+                <span className={`text-[10px] font-black tracking-[0.25em] uppercase ${
                   isActive 
                     ? isThreat ? 'text-red-400' : 'text-primary'
                     : 'text-slate-500'
@@ -58,39 +62,24 @@ function DetectionsList() {
                   {isActive ? isThreat ? 'Threat Alert' : 'Active Track' : 'Lost Signal'}
                 </span>
               </div>
-              <span className={`text-[10px] font-mono font-bold ${isActive ? 'text-slate-400' : 'text-slate-600'}`}>
+              <span className={`text-[10px] font-mono font-bold tracking-tight ${isActive ? 'text-slate-400' : 'text-slate-600'}`}>
                 {new Date(event.timestamp * 1000).toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             </div>
             
-            <div className="flex flex-col gap-1.5 mb-4">
-              <h4 className={`text-base font-black leading-tight tracking-tight ${isActive ? 'text-white' : 'text-slate-500'}`}>
+            <div className="flex flex-col gap-2">
+              <h4 className={`text-lg font-black leading-tight tracking-tight transition-colors ${isActive ? 'text-white group-hover/card:text-primary/90' : 'text-slate-500'}`}>
                 {isThreat 
-                  ? (event.type === 'room' ? 'Unauthorized Entry' : 'Suspicious Movement')
-                  : (event.type === 'room' ? 'Interior Movement' : 'Perimeter Activity')
+                  ? 'Threat Detected'
+                  : 'Person Detected'
                 }
               </h4>
-              <p className="text-[11px] text-slate-500 flex items-center gap-2 font-bold uppercase tracking-wider">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-primary/50"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              <p className="text-[11px] text-slate-500 flex items-center gap-2 font-black uppercase tracking-[0.15em]">
+                <div className="w-5 h-5 rounded-lg bg-white/5 flex items-center justify-center border border-white/5">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-primary/70"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
                 {event.type === 'room' ? 'Sector 02' : 'Access Road'}
               </p>
-            </div>
-
-            <div className="flex gap-2">
-              <span className={`text-[10px] font-black px-3 py-1 rounded-lg border transition-colors ${
-                isActive 
-                  ? isThreat ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-primary/20 border-primary/30 text-primary shadow-[0_0_10px_rgba(0,210,255,0.1)]' 
-                  : 'bg-white/5 border-white/5 text-slate-600'
-              }`}>
-                ID-{event.personId.split('-')[0].toUpperCase()}
-              </span>
-              <span className={`text-[10px] font-black px-3 py-1 rounded-lg border transition-colors ${
-                isActive 
-                  ? isThreat ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-secondary/20 border-secondary/30 text-secondary shadow-[0_0_10px_rgba(0,255,135,0.1)]' 
-                  : 'bg-white/5 border-white/5 text-slate-600'
-              }`}>
-                LVL-{event.type === 'room' ? '02' : '01'}
-              </span>
             </div>
           </div>
         );
@@ -101,7 +90,12 @@ function DetectionsList() {
 
 export default function Home() {
   const [neighborhood, setNeighborhood] = useState(exampleNeighborhood);
+  const demoSectionRef = useRef<HTMLElement>(null);
   const hasTowerCam2 = neighborhood?.towerCctvs?.some(c => c.id === "tower-cam-2");
+
+  const scrollToDemo = () => {
+    demoSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const toggleTowerCam = () => {
     if (hasTowerCam2) {
@@ -142,6 +136,7 @@ export default function Home() {
         description="Hawkeyes is the foundational engine that lets AI understand and reason about real-world spaces—so humans can act faster, with total confidence."
         primaryCtaText="Get Started Now"
         secondaryCtaText="View Demo"
+        onSecondaryCtaClick={scrollToDemo}
       />
 
       <section className="px-6 pb-24 -mt-32 relative z-20">
@@ -171,7 +166,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center px-6 py-24 relative overflow-hidden">
+      <section ref={demoSectionRef} className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center px-6 py-24 relative overflow-hidden">
         {/* Decorative background elements */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-slate-500/10 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 blur-[120px] rounded-full pointer-events-none" />
@@ -217,34 +212,36 @@ export default function Home() {
             {/* Right Column: Detections - Restored to right */}
             <div className="lg:w-[25%]">
               <div className="bg-[#0f0f0f] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col h-full overflow-hidden backdrop-blur-md">
-                <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white shadow-lg shadow-primary/20">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                  <div className="flex items-center gap-5">
+                    <div className="w-14 h-14 rounded-[1.25rem] bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white shadow-[0_0_25px_rgba(0,210,255,0.3)] border border-white/20">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-white leading-none mb-1.5 uppercase tracking-tighter">Event Feed</h3>
-                      <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">Real-time Intel</p>
+                      <h3 className="text-2xl font-black text-white leading-none mb-1.5 uppercase tracking-tighter italic">Event Feed</h3>
+                      <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">Real-time Intel</p>
                     </div>
                   </div>
 
                   <button 
                     onClick={toggleTowerCam}
-                    className={`flex items-center gap-2 px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_0_rgb(0,0,0,0.2),0_1px_2px_rgba(255,255,255,0.1)_inset] active:translate-y-[2px] active:shadow-none border border-white/10 ${
+                    className={`flex items-center gap-2.5 px-6 py-3 text-[11px] font-black uppercase tracking-widest rounded-2xl transition-all shadow-[0_6px_0_rgba(0,0,0,0.3),0_1px_2px_rgba(255,255,255,0.2)_inset] active:translate-y-[2px] active:shadow-none border border-white/20 group/btn ${
                       hasTowerCam2 
                         ? 'bg-gradient-to-b from-red-400 to-red-600 text-white' 
-                        : 'bg-gradient-to-b from-primary to-blue-600 text-white shadow-primary/20'
+                        : 'bg-gradient-to-b from-primary to-blue-700 text-white shadow-[0_0_20px_rgba(0,210,255,0.2)]'
                     }`}
                   >
                     {hasTowerCam2 ? (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                        Remove Cam
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover/btn:rotate-90 transition-transform"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <span className="hidden sm:inline">Remove Cam</span>
+                        <span className="sm:hidden">Remove</span>
                       </>
                     ) : (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                        Deploy Cam
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover/btn:rotate-90 transition-transform"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                        <span className="hidden sm:inline">Deploy Cam</span>
+                        <span className="sm:hidden">Deploy</span>
                       </>
                     )}
                   </button>

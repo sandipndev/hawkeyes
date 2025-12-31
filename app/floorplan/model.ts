@@ -1,6 +1,8 @@
 import { type Vec2, type Vec3 } from "./types";
 import { type CCTV, type TowerCCTV } from "./sensors";
 
+export type { CCTV, TowerCCTV };
+
 // Furniture
 export enum Furniture {
   Bed = "Bed",
@@ -62,4 +64,3 @@ export type Neighborhood = {
   roads: Road[];
   towerCctvs?: TowerCCTV[];
 };
-

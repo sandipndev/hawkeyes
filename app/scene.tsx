@@ -20,8 +20,6 @@ function Scene() {
 
   // Handle Camera Switching and Animation
   useFrame((state) => {
-    if (isPaused) return;
-
     if (activeCctv) {
       const { x, y, z } = activeCctv.worldPosition;
       state.camera.position.lerp(new THREE.Vector3(x, y, z), 0.1);
@@ -63,7 +61,7 @@ function Scene() {
       <NeighborhoodComponent neighborhood3D={neighborhood3D} />
       <OrbitControls
         ref={controlsRef}
-        autoRotate={!activeCameraId}
+        autoRotate={!activeCameraId && !isPaused}
         autoRotateSpeed={0.5}
         enableZoom={true}
         enablePan={true}
@@ -160,47 +158,16 @@ function SceneControls() {
 
 export default function Scene3D() {
   const { setIsPaused, isPaused } = useSceneSettings();
-  const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setIsPaused(true);
-      }
-    };
-
-    const handleBlur = () => setIsPaused(true);
-
-    window.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      window.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, [setIsPaused]);
-
-  const handleMouseEnter = () => {
-    if (pauseTimeoutRef.current) {
-      clearTimeout(pauseTimeoutRef.current);
-      pauseTimeoutRef.current = null;
-    }
     setIsPaused(false);
-  };
-
-  const handleMouseLeave = () => {
-    // Add a small delay before pausing to make it less aggressive
-    pauseTimeoutRef.current = setTimeout(() => {
-      setIsPaused(true);
-      pauseTimeoutRef.current = null;
-    }, 1500); // 1.5 second delay
-  };
+  }, [setIsPaused]);
 
   return (
     <div 
+      ref={containerRef}
       className="relative w-full h-full select-none"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <SceneControls />
       <Canvas 
@@ -209,18 +176,6 @@ export default function Scene3D() {
       >
         <Scene />
       </Canvas>
-      
-      {isPaused && (
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-20 flex items-center justify-center pointer-events-none transition-all duration-500">
-          <div className="px-6 py-3 rounded-2xl bg-black/60 border border-white/10 shadow-2xl flex items-center gap-4 animate-in fade-in zoom-in duration-300">
-            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.2em] leading-none mb-1">System Paused</span>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Hover to Resume Feed</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

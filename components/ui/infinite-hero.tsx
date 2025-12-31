@@ -26,7 +26,7 @@ function ShaderPlane({
 	useFrame((state) => {
 		if (meshRef.current) {
 			const material = meshRef.current.material as THREE.ShaderMaterial;
-			material.uniforms.u_time.value = state.clock.elapsedTime * 0.5;
+			material.uniforms.u_time.value = state.clock.getElapsedTime() * 0.5;
 			material.uniforms.u_resolution.value.set(size.width, size.height, 1.0);
 		}
 	});
@@ -67,7 +67,6 @@ function ShaderBackground({
     varying vec2 vUv;
     uniform float u_time;
     uniform vec3 u_resolution;
-    uniform sampler2D iChannel0;
 
     #define STEP 256
     #define EPS .001
@@ -166,7 +165,7 @@ function ShaderBackground({
         
         for(; nbStep < STEP;++nbStep)
         {
-            curDist = map(position + (texture(iChannel0, position.xz) - .5).xyz * .005);
+            curDist = map(position);
             
             if(curDist < EPS)
                 break;
