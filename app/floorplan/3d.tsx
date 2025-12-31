@@ -867,6 +867,7 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
   }, [validPoints]);
 
   useFrame((state, delta) => {
+    if (validPoints.length === 0) return;
     const now = state.clock.elapsedTime;
     
     setPeople(prevPeople => {
@@ -920,8 +921,19 @@ export function AnimatedPeople({ neighborhood3D }: { neighborhood3D: Neighborhoo
         if (dist < 0.4) {
           // Reached target, pick a new one of the same type (road/room)
           const availablePoints = validPoints.filter(vp => vp.type === p.type);
-          const nextTarget = availablePoints[Math.floor(Math.random() * availablePoints.length)];
+          const nextTarget = availablePoints.length > 0 
+            ? availablePoints[Math.floor(Math.random() * availablePoints.length)]
+            : validPoints[Math.floor(Math.random() * validPoints.length)];
           
+          if (!nextTarget) {
+            return {
+              ...p,
+              isThreat,
+              threatDetectedAt,
+              isVisible
+            };
+          }
+
           return {
             ...p,
             target: nextTarget.pos.clone(),
