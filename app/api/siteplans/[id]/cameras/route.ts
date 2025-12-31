@@ -38,6 +38,7 @@ export async function POST(
       }),
       prisma.camera.createMany({
         data: cameras.map((c: any) => ({
+          id: c.id,
           name: c.name,
           rtspFeed: c.rtspFeed,
           sitePlanId: id,
